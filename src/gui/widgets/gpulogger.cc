@@ -193,18 +193,6 @@ void PCSX::Widgets::GPULogger::draw(PCSX::GPULogger* logger, const char* title) 
             m_exportStatus = fmt::format(f_("Failed to save frame to {}"), path.string());
         }
     }
-    ImGui::SameLine();
-    if (ImGui::Button(_("Split 4MB frame log"))) {
-        auto path = std::filesystem::path(m_exportPath.data());
-        constexpr size_t c_maxChunkSize = 4 * 1024 * 1024;
-        size_t parts = logger->saveFrameLogSplit(path, c_maxChunkSize);
-        if (parts > 0) {
-            m_exportStatus = fmt::format(f_("Saved frame {} into {} part(s) starting at {}"), logger->m_frameCounter, parts,
-                                         path.string());
-        } else {
-            m_exportStatus = fmt::format(f_("Failed to split frame to {}"), path.string());
-        }
-    }
     if (!m_exportStatus.empty()) {
         ImGui::TextWrapped("%s", m_exportStatus.c_str());
     }
