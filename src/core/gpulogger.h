@@ -24,6 +24,7 @@
 #include <array>
 #include <filesystem>
 #include <optional>
+#include <vector>
 
 #include "core/gpu.h"
 #include "core/gpulogger_types.h"
@@ -40,14 +41,14 @@ class GPULogger;
 class GPULogger {
   public:
     GPULogger();
-    void clearFrameLog() { m_list.destroyAll(); }
+    void clearFrameLog();
     template <typename T>
     void addNode(const T& data, GPU::Logged::Origin origin, uint32_t value, uint32_t length) {
         if (m_enabled) {
             addNodeInternal(new T(data), origin, value, length);
         }
     }
-    void recordGteState(const GTEState& state) { m_lastGteState = state; }
+    void recordGteState(const GTEState& state);
     bool saveFrameLog(const std::filesystem::path& path);
     void replay(GPU*);
     void highlight(GPU::Logged* node, bool only = false);
@@ -67,12 +68,14 @@ class GPULogger {
     bool m_breakOnVSync = false;
     bool m_hasFramebuffers = false;
     uint64_t m_frameCounter = 0;
+    uint64_t m_lastGteFrame = 0;
     GPU::LoggedList m_list;
     Slice m_vram;
     float m_impact = 1.0f / 256.0f;
     float m_decayRate = 1.0f / 1024.0f;
 
     std::optional<GTEState> m_lastGteState;
+    std::vector<GTEState> m_gteFrameLog;
 
     std::array<OpenGL::ivec2, 3 * 0x10000> m_vertices;
     unsigned m_verticesCount = 0;

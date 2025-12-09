@@ -1255,7 +1255,7 @@ std::string colorToHex(uint32_t color) {
 void writePrimitiveGteJson(std::ostream &output, const std::optional<PCSX::GTEState> &gteState) {
     if (!gteState) return;
 
-    const auto &gte = *gteState;
+    const auto &gte = gteState->output;
     output << ",\n";
     output << "        \"sourceVertices3D\": [[" << gte.vertices[0][0] << ", " << gte.vertices[0][1] << ", "
            << gte.vertices[0][2] << "], [" << gte.vertices[1][0] << ", " << gte.vertices[1][1] << ", "
