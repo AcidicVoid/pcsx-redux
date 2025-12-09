@@ -124,6 +124,20 @@ const char* originToString(PCSX::GPU::Logged::Origin origin) {
     return "unknown";
 }
 
+const char* gteCommandToString(PCSX::GTEState::Command command) {
+    switch (command) {
+        case PCSX::GTEState::Command::RTPT:
+            return "RTPT";
+        case PCSX::GTEState::Command::RTPS:
+            return "RTPS";
+        case PCSX::GTEState::Command::NCLIP:
+            return "NCLIP";
+        case PCSX::GTEState::Command::Unknown:
+            break;
+    }
+    return "Unknown";
+}
+
 std::string colorToHex(uint32_t color) {
     std::ostringstream stream;
     stream << "0x" << std::hex << std::setw(6) << std::setfill('0') << (color & 0xffffff);
@@ -289,21 +303,26 @@ bool PCSX::GPULogger::saveFrameLog(const std::filesystem::path& path) {
             const auto &gte = *logged.gteState;
             output << ",\n";
             output << "      \"gte\": {\n";
-            output << "        \"vx0\": [" << gte.vx0[0] << ", " << gte.vx0[1] << ", " << gte.vx0[2] << "],\n";
-            output << "        \"vx1\": [" << gte.vx1[0] << ", " << gte.vx1[1] << ", " << gte.vx1[2] << "],\n";
-            output << "        \"vx2\": [" << gte.vx2[0] << ", " << gte.vx2[1] << ", " << gte.vx2[2] << "],\n";
-            output << "        \"rotation\": [[" << gte.rotationMatrix[0] << ", " << gte.rotationMatrix[1] << ", "
-                   << gte.rotationMatrix[2] << "], [" << gte.rotationMatrixRow2[0] << ", " << gte.rotationMatrixRow2[1]
-                   << ", " << gte.rotationMatrixRow2[2] << "], [" << gte.rotationMatrixRow3[0] << ", "
-                   << gte.rotationMatrixRow3[1] << ", " << gte.rotationMatrixRow3[2] << "]],\n";
-            output << "        \"light\": [[" << gte.lightMatrix[0] << ", " << gte.lightMatrix[1] << ", "
-                   << gte.lightMatrix[2] << "], [" << gte.lightMatrixRow2[0] << ", " << gte.lightMatrixRow2[1] << ", "
-                   << gte.lightMatrixRow2[2] << "], [" << gte.lightMatrixRow3[0] << ", " << gte.lightMatrixRow3[1]
-                   << ", " << gte.lightMatrixRow3[2] << "]],\n";
-            output << "        \"color\": [[" << gte.colorMatrix[0] << ", " << gte.colorMatrix[1] << ", "
-                   << gte.colorMatrix[2] << "], [" << gte.colorMatrixRow2[0] << ", " << gte.colorMatrixRow2[1] << ", "
-                   << gte.colorMatrixRow2[2] << "], [" << gte.colorMatrixRow3[0] << ", " << gte.colorMatrixRow3[1]
-                   << ", " << gte.colorMatrixRow3[2] << "]],\n";
+            output << "        \"command\": \"" << gteCommandToString(gte.command) << "\",\n";
+            output << "        \"sourceVertices3D\": [[" << gte.vertices[0][0] << ", " << gte.vertices[0][1] << ", "
+                   << gte.vertices[0][2] << "], [" << gte.vertices[1][0] << ", " << gte.vertices[1][1] << ", "
+                   << gte.vertices[1][2] << "], [" << gte.vertices[2][0] << ", " << gte.vertices[2][1] << ", "
+                   << gte.vertices[2][2] << "]],\n";
+            output << "        \"screenCoords\": [[" << gte.screenCoords[0][0] << ", " << gte.screenCoords[0][1]
+                   << "], [" << gte.screenCoords[1][0] << ", " << gte.screenCoords[1][1] << "], ["
+                   << gte.screenCoords[2][0] << ", " << gte.screenCoords[2][1] << "]],\n";
+            output << "        \"rotation\": [[" << gte.rotationMatrix[0][0] << ", " << gte.rotationMatrix[0][1] << ", "
+                   << gte.rotationMatrix[0][2] << "], [" << gte.rotationMatrix[1][0] << ", " << gte.rotationMatrix[1][1]
+                   << ", " << gte.rotationMatrix[1][2] << "], [" << gte.rotationMatrix[2][0] << ", "
+                   << gte.rotationMatrix[2][1] << ", " << gte.rotationMatrix[2][2] << "]],\n";
+            output << "        \"light\": [[" << gte.lightMatrix[0][0] << ", " << gte.lightMatrix[0][1] << ", "
+                   << gte.lightMatrix[0][2] << "], [" << gte.lightMatrix[1][0] << ", " << gte.lightMatrix[1][1] << ", "
+                   << gte.lightMatrix[1][2] << "], [" << gte.lightMatrix[2][0] << ", " << gte.lightMatrix[2][1] << ", "
+                   << gte.lightMatrix[2][2] << "]],\n";
+            output << "        \"color\": [[" << gte.colorMatrix[0][0] << ", " << gte.colorMatrix[0][1] << ", "
+                   << gte.colorMatrix[0][2] << "], [" << gte.colorMatrix[1][0] << ", " << gte.colorMatrix[1][1] << ", "
+                   << gte.colorMatrix[1][2] << "], [" << gte.colorMatrix[2][0] << ", " << gte.colorMatrix[2][1] << ", "
+                   << gte.colorMatrix[2][2] << "]],\n";
             output << "        \"translation\": [" << gte.translation[0] << ", " << gte.translation[1] << ", "
                    << gte.translation[2] << "]\n";
             output << "      }";
