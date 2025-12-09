@@ -1186,6 +1186,14 @@ const char *PCSX::GPU::blendFunctionToString(PCSX::GPU::BlendFunction function) 
     return "unknown";
 }
 
+namespace {
+
+std::string colorToHex(uint32_t color) {
+    std::ostringstream stream;
+    stream << "0x" << std::hex << std::setw(6) << std::setfill('0') << (color & 0xffffff);
+    return stream.str();
+}
+
 template <PCSX::GPU::Shading shading>
 constexpr const char *shadingString() {
     if constexpr (shading == PCSX::GPU::Shading::Flat) {
