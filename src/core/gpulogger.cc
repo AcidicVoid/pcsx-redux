@@ -512,7 +512,17 @@ bool PCSX::GPULogger::saveFrameLog(const std::filesystem::path& path) {
             }
             output << "\n      }";
         }
-        logged.writeJsonFields(output);
+        std::ostringstream extraFieldsStream;
+        logged.writeJsonFields(extraFieldsStream);
+        std::string extraFields = extraFieldsStream.str();
+
+        // Check if we have data AND it is not the unwanted "..." fragment
+        bool isDebugPlaceholder = (extraFields.find("...") != std::string::npos);
+
+        if (!extraFields.empty() && !isDebugPlaceholder) {
+            output << ",\n";  // Safely inject the comma here
+            output << extraFields;
+        }
         output << "\n";
         output << "    }";
     }
