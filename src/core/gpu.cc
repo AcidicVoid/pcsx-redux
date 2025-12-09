@@ -1160,7 +1160,7 @@ std::string colorToHex(uint32_t color) {
     return stream.str();
 }
 
-const char *texDepthToString(PCSX::GPU::TexDepth depth) {
+const char *PCSX::GPU::texDepthToString(PCSX::GPU::TexDepth depth) {
     switch (depth) {
         case PCSX::GPU::TexDepth::Tex4Bits:
             return "4bpp";
@@ -1172,7 +1172,7 @@ const char *texDepthToString(PCSX::GPU::TexDepth depth) {
     return "unknown";
 }
 
-const char *blendFunctionToString(PCSX::GPU::BlendFunction function) {
+const char *PCSX::GPU::blendFunctionToString(PCSX::GPU::BlendFunction function) {
     switch (function) {
         case PCSX::GPU::BlendFunction::HalfBackAndHalfFront:
             return "50% back + 50% front";
@@ -1384,6 +1384,8 @@ bool PCSX::GPU::Rect<size, textured, blend, modulation>::writeJsonFields(std::os
     return true;
 }
 
+template <PCSX::GPU::Shading shading, PCSX::GPU::Shape shape, PCSX::GPU::Textured textured, PCSX::GPU::Blend blend,
+          PCSX::GPU::Modulation modulation>
 void PCSX::GPU::Poly<shading, shape, textured, blend, modulation>::drawLogNode(unsigned itemIndex,
                                                                                const DrawLogSettings &settings) {
     if constexpr ((textured == Textured::No) || (modulation == Modulation::On)) {
