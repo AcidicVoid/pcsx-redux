@@ -1152,7 +1152,15 @@ void PCSX::GPU::Logged::drawColorBox(uint32_t color, unsigned itemIndex, unsigne
     }
 }
 
-const char *PCSX::GPU::GPU::texDepthToString(PCSX::GPU::TexDepth depth) {
+namespace {
+
+std::string colorToHex(uint32_t color) {
+    std::ostringstream stream;
+    stream << "0x" << std::hex << std::setw(6) << std::setfill('0') << (color & 0xffffff);
+    return stream.str();
+}
+
+const char *PCSX::GPU::texDepthToString(PCSX::GPU::TexDepth depth) {
     switch (depth) {
         case PCSX::GPU::TexDepth::Tex4Bits:
             return "4bpp";
@@ -1164,7 +1172,7 @@ const char *PCSX::GPU::GPU::texDepthToString(PCSX::GPU::TexDepth depth) {
     return "unknown";
 }
 
-const char *PCSX::GPU::GPU::blendFunctionToString(PCSX::GPU::BlendFunction function) {
+const char *PCSX::GPU::blendFunctionToString(PCSX::GPU::BlendFunction function) {
     switch (function) {
         case PCSX::GPU::BlendFunction::HalfBackAndHalfFront:
             return "50% back + 50% front";

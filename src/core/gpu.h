@@ -301,8 +301,8 @@ class GPU {
     };
     enum class TexDepth { Tex4Bits, Tex8Bits, Tex16Bits };
 
-    static const char *blendFunctionToString(BlendFunction function);
-    static const char *texDepthToString(TexDepth depth);
+    const char *blendFunctionToString(BlendFunction function);
+    const char *texDepthToString(TexDepth depth);
 
     struct EmptyColor {};
 
