@@ -186,6 +186,7 @@ class GPU {
         uint32_t pc;
         uint32_t sourceAddr = 0;
         std::vector<uint32_t> words;
+        bool wordsTruncated = false;
         std::optional<GTEState> gteState;
 
         Origin origin;

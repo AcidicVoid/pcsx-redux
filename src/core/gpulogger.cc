@@ -30,6 +30,10 @@
 #include "core/system.h"
 #include "imgui/imgui.h"
 
+namespace {
+constexpr size_t c_maxLoggedWords = 1024;
+}
+
 static const char* const c_vtx = R"(
 #version 330 core
 
@@ -210,6 +214,12 @@ void PCSX::GPULogger::addNodeInternal(GPU::Logged* node, GPU::Logged::Origin ori
     node->length = length;
     node->sourceAddr = value;
     if (node->words.empty()) node->words.push_back(value);
+    node->wordsTruncated = false;
+    if (node->words.size() > c_maxLoggedWords) {
+        node->words.resize(c_maxLoggedWords);
+        node->words.shrink_to_fit();
+        node->wordsTruncated = true;
+    }
     node->gteState = m_lastGteState;
     node->pc = g_emulator->m_cpu->m_regs.pc;
     node->frame = frame;
@@ -272,6 +282,7 @@ bool PCSX::GPULogger::saveFrameLog(const std::filesystem::path& path) {
             if (i + 1 < logged.words.size()) output << ", ";
         }
         output << "],\n";
+        output << "      \"wordsTruncated\": " << (logged.wordsTruncated ? "true" : "false") << ",\n";
         output << "      \"enabled\": " << (logged.enabled ? "true" : "false") << ",\n";
         output << "      \"highlight\": " << (logged.highlight ? "true" : "false");
         if (logged.gteState) {
