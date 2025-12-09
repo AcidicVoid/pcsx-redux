@@ -22,6 +22,7 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <string>
 #include <string_view>
 
 #include "core/gpu.h"
@@ -78,6 +79,25 @@ PCSX::GPULogger::GPULogger() : m_listener(g_system->m_eventBus) {
     });
 }
 
+void PCSX::GPULogger::clearFrameLog() {
+    m_list.destroyAll();
+    m_gteFrameLog.clear();
+    m_lastGteState.reset();
+    m_lastGteFrame = m_frameCounter;
+}
+
+void PCSX::GPULogger::recordGteState(const GTEState& state) {
+    if (m_lastGteFrame != m_frameCounter) {
+        m_lastGteFrame = m_frameCounter;
+        m_gteFrameLog.clear();
+        m_lastGteState.reset();
+    }
+    m_lastGteState = state;
+    if (m_enabled) {
+        m_gteFrameLog.push_back(state);
+    }
+}
+
 namespace {
 
 std::string escapeJsonString(std::string_view value) {
@@ -132,6 +152,44 @@ const char* gteCommandToString(PCSX::GTEState::Command command) {
             return "RTPS";
         case PCSX::GTEState::Command::NCLIP:
             return "NCLIP";
+        case PCSX::GTEState::Command::OP:
+            return "OP";
+        case PCSX::GTEState::Command::DPCS:
+            return "DPCS";
+        case PCSX::GTEState::Command::INTPL:
+            return "INTPL";
+        case PCSX::GTEState::Command::MVMVA:
+            return "MVMVA";
+        case PCSX::GTEState::Command::NCDS:
+            return "NCDS";
+        case PCSX::GTEState::Command::CDP:
+            return "CDP";
+        case PCSX::GTEState::Command::NCDT:
+            return "NCDT";
+        case PCSX::GTEState::Command::NCCS:
+            return "NCCS";
+        case PCSX::GTEState::Command::CC:
+            return "CC";
+        case PCSX::GTEState::Command::NCS:
+            return "NCS";
+        case PCSX::GTEState::Command::NCT:
+            return "NCT";
+        case PCSX::GTEState::Command::SQR:
+            return "SQR";
+        case PCSX::GTEState::Command::DCPL:
+            return "DCPL";
+        case PCSX::GTEState::Command::DPCT:
+            return "DPCT";
+        case PCSX::GTEState::Command::AVSZ3:
+            return "AVSZ3";
+        case PCSX::GTEState::Command::AVSZ4:
+            return "AVSZ4";
+        case PCSX::GTEState::Command::GPL:
+            return "GPL";
+        case PCSX::GTEState::Command::GPF:
+            return "GPF";
+        case PCSX::GTEState::Command::NCCT:
+            return "NCCT";
         case PCSX::GTEState::Command::Unknown:
             break;
     }
@@ -145,6 +203,60 @@ std::string colorToHex(uint32_t color) {
 }
 
 const char* boolString(bool value) { return value ? "true" : "false"; }
+
+void writeRegistersJson(std::ostream& output, std::string_view name, const std::array<uint32_t, 32>& registers,
+                        const char* indent) {
+    output << indent << "\"" << name << "\": [";
+    for (size_t i = 0; i < registers.size(); ++i) {
+        output << registers[i];
+        if (i + 1 < registers.size()) output << ", ";
+    }
+    output << "]\n";
+}
+
+void writeGteSnapshotJson(std::ostream& output, std::string_view name, const PCSX::GTEState::Snapshot& snapshot,
+                          const char* indent) {
+    output << indent << "\"" << name << "\": {\n";
+    output << indent << "  \"sourceVertices3D\": [[" << snapshot.vertices[0][0] << ", " << snapshot.vertices[0][1]
+           << ", " << snapshot.vertices[0][2] << "], [" << snapshot.vertices[1][0] << ", "
+           << snapshot.vertices[1][1] << ", " << snapshot.vertices[1][2] << "], [" << snapshot.vertices[2][0]
+           << ", " << snapshot.vertices[2][1] << ", " << snapshot.vertices[2][2] << "]],\n";
+    output << indent << "  \"screenCoords\": [[" << snapshot.screenCoords[0][0] << ", "
+           << snapshot.screenCoords[0][1] << "], [" << snapshot.screenCoords[1][0] << ", "
+           << snapshot.screenCoords[1][1] << "], [" << snapshot.screenCoords[2][0] << ", "
+           << snapshot.screenCoords[2][1] << "]],\n";
+    output << indent << "  \"rotation\": [[" << snapshot.rotationMatrix[0][0] << ", "
+           << snapshot.rotationMatrix[0][1] << ", " << snapshot.rotationMatrix[0][2] << "], ["
+           << snapshot.rotationMatrix[1][0] << ", " << snapshot.rotationMatrix[1][1] << ", "
+           << snapshot.rotationMatrix[1][2] << "], [" << snapshot.rotationMatrix[2][0] << ", "
+           << snapshot.rotationMatrix[2][1] << ", " << snapshot.rotationMatrix[2][2] << "]],\n";
+    output << indent << "  \"light\": [[" << snapshot.lightMatrix[0][0] << ", " << snapshot.lightMatrix[0][1]
+           << ", " << snapshot.lightMatrix[0][2] << "], [" << snapshot.lightMatrix[1][0] << ", "
+           << snapshot.lightMatrix[1][1] << ", " << snapshot.lightMatrix[1][2] << "], ["
+           << snapshot.lightMatrix[2][0] << ", " << snapshot.lightMatrix[2][1] << ", "
+           << snapshot.lightMatrix[2][2] << "]],\n";
+    output << indent << "  \"color\": [[" << snapshot.colorMatrix[0][0] << ", " << snapshot.colorMatrix[0][1]
+           << ", " << snapshot.colorMatrix[0][2] << "], [" << snapshot.colorMatrix[1][0] << ", "
+           << snapshot.colorMatrix[1][1] << ", " << snapshot.colorMatrix[1][2] << "], ["
+           << snapshot.colorMatrix[2][0] << ", " << snapshot.colorMatrix[2][1] << ", "
+           << snapshot.colorMatrix[2][2] << "]],\n";
+    output << indent << "  \"translation\": [" << snapshot.translation[0] << ", " << snapshot.translation[1]
+           << ", " << snapshot.translation[2] << "],\n";
+    output << indent << "  \"projection\": {\n";
+    output << indent << "    \"offsetX\": " << snapshot.offsetX << ",\n";
+    output << indent << "    \"offsetY\": " << snapshot.offsetY << ",\n";
+    output << indent << "    \"projectionPlaneDistance\": " << snapshot.projectionPlaneDistance << ",\n";
+    output << indent << "    \"depthQueueA\": " << snapshot.depthQueueA << ",\n";
+    output << indent << "    \"depthQueueB\": " << snapshot.depthQueueB << ",\n";
+    output << indent << "    \"depthScaleFactor3\": " << snapshot.depthScaleFactor3 << ",\n";
+    output << indent << "    \"depthScaleFactor4\": " << snapshot.depthScaleFactor4 << "\n";
+    output << indent << "  },\n";
+    const std::string subIndent = std::string(indent) + "  ";
+    writeRegistersJson(output, "dataRegisters", snapshot.dataRegisters, subIndent.c_str());
+    output << ",\n";
+    writeRegistersJson(output, "controlRegisters", snapshot.controlRegisters, subIndent.c_str());
+    output << indent << "}";
+}
 
 }  // namespace
 
@@ -269,6 +381,26 @@ bool PCSX::GPULogger::saveFrameLog(const std::filesystem::path& path) {
 
     output << "{\n";
     output << "  \"frame\": " << m_frameCounter << ",\n";
+    output << "  \"gte\": [\n";
+
+    bool firstGte = true;
+    for (const auto& state : m_gteFrameLog) {
+        if (!firstGte) output << ",\n";
+        firstGte = false;
+
+        std::ostringstream pcStream;
+        pcStream << std::hex << std::setw(8) << std::setfill('0') << state.pc;
+
+        output << "    {\n";
+        output << "      \"command\": \"" << gteCommandToString(state.command) << "\",\n";
+        output << "      \"pc\": \"0x" << pcStream.str() << "\",\n";
+        writeGteSnapshotJson(output, "input", state.input, "      ");
+        output << ",\n";
+        writeGteSnapshotJson(output, "output", state.output, "      ");
+        output << "\n    }";
+    }
+
+    output << "\n  ],\n";
     output << "  \"commands\": [\n";
 
     GPU::GPUStats stats;
@@ -300,41 +432,17 @@ bool PCSX::GPULogger::saveFrameLog(const std::filesystem::path& path) {
         output << "      \"enabled\": " << (logged.enabled ? "true" : "false") << ",\n";
         output << "      \"highlight\": " << (logged.highlight ? "true" : "false");
         if (logged.gteState) {
-            const auto &gte = *logged.gteState;
+            const auto& gte = *logged.gteState;
+            std::ostringstream gtePc;
+            gtePc << std::hex << std::setw(8) << std::setfill('0') << gte.pc;
             output << ",\n";
             output << "      \"gte\": {\n";
             output << "        \"command\": \"" << gteCommandToString(gte.command) << "\",\n";
-            output << "        \"sourceVertices3D\": [[" << gte.vertices[0][0] << ", " << gte.vertices[0][1] << ", "
-                   << gte.vertices[0][2] << "], [" << gte.vertices[1][0] << ", " << gte.vertices[1][1] << ", "
-                   << gte.vertices[1][2] << "], [" << gte.vertices[2][0] << ", " << gte.vertices[2][1] << ", "
-                   << gte.vertices[2][2] << "]],\n";
-            output << "        \"screenCoords\": [[" << gte.screenCoords[0][0] << ", " << gte.screenCoords[0][1]
-                   << "], [" << gte.screenCoords[1][0] << ", " << gte.screenCoords[1][1] << "], ["
-                   << gte.screenCoords[2][0] << ", " << gte.screenCoords[2][1] << "]],\n";
-            output << "        \"rotation\": [[" << gte.rotationMatrix[0][0] << ", " << gte.rotationMatrix[0][1] << ", "
-                   << gte.rotationMatrix[0][2] << "], [" << gte.rotationMatrix[1][0] << ", " << gte.rotationMatrix[1][1]
-                   << ", " << gte.rotationMatrix[1][2] << "], [" << gte.rotationMatrix[2][0] << ", "
-                   << gte.rotationMatrix[2][1] << ", " << gte.rotationMatrix[2][2] << "]],\n";
-            output << "        \"light\": [[" << gte.lightMatrix[0][0] << ", " << gte.lightMatrix[0][1] << ", "
-                   << gte.lightMatrix[0][2] << "], [" << gte.lightMatrix[1][0] << ", " << gte.lightMatrix[1][1] << ", "
-                   << gte.lightMatrix[1][2] << "], [" << gte.lightMatrix[2][0] << ", " << gte.lightMatrix[2][1] << ", "
-                   << gte.lightMatrix[2][2] << "]],\n";
-            output << "        \"color\": [[" << gte.colorMatrix[0][0] << ", " << gte.colorMatrix[0][1] << ", "
-                   << gte.colorMatrix[0][2] << "], [" << gte.colorMatrix[1][0] << ", " << gte.colorMatrix[1][1] << ", "
-                   << gte.colorMatrix[1][2] << "], [" << gte.colorMatrix[2][0] << ", " << gte.colorMatrix[2][1] << ", "
-                   << gte.colorMatrix[2][2] << "]],\n";
-            output << "        \"translation\": [" << gte.translation[0] << ", " << gte.translation[1] << ", "
-                   << gte.translation[2] << "],\n";
-            output << "        \"projection\": {\n";
-            output << "          \"offsetX\": " << gte.offsetX << ",\n";
-            output << "          \"offsetY\": " << gte.offsetY << ",\n";
-            output << "          \"projectionPlaneDistance\": " << gte.projectionPlaneDistance << ",\n";
-            output << "          \"depthQueueA\": " << gte.depthQueueA << ",\n";
-            output << "          \"depthQueueB\": " << gte.depthQueueB << ",\n";
-            output << "          \"depthScaleFactor3\": " << gte.depthScaleFactor3 << ",\n";
-            output << "          \"depthScaleFactor4\": " << gte.depthScaleFactor4 << "\n";
-            output << "        }\n";
-            output << "      }";
+            output << "        \"pc\": \"0x" << gtePc.str() << "\",\n";
+            writeGteSnapshotJson(output, "input", gte.input, "        ");
+            output << ",\n";
+            writeGteSnapshotJson(output, "output", gte.output, "        ");
+            output << "\n      }";
         }
         logged.writeJsonFields(output);
         output << "\n";
@@ -356,7 +464,12 @@ bool PCSX::GPULogger::saveFrameLog(const std::filesystem::path& path) {
     return output.good();
 }
 
-void PCSX::GPULogger::startNewFrame() { m_vram = g_emulator->m_gpu->getVRAM(GPU::Ownership::ACQUIRE); }
+void PCSX::GPULogger::startNewFrame() {
+    m_vram = g_emulator->m_gpu->getVRAM(GPU::Ownership::ACQUIRE);
+    m_gteFrameLog.clear();
+    m_lastGteState.reset();
+    m_lastGteFrame = m_frameCounter;
+}
 
 void PCSX::GPULogger::replay(GPU* gpu) {
     if (m_vram.data()) gpu->partialUpdateVRAM(0, 0, 1024, 512, m_vram.data<uint16_t>());

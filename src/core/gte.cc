@@ -8,6 +8,7 @@
 #include "core/gte.h"
 
 #include <algorithm>
+#include <optional>
 
 #include "core/pgxp_debug.h"
 #include "core/pgxp_gte.h"
@@ -268,28 +269,56 @@
 #define CV2(n) (n < 3 ? PCSX::g_emulator->m_cpu->m_regs.CP2C.p[(n << 3) + 6].sd : 0)
 #define CV3(n) (n < 3 ? PCSX::g_emulator->m_cpu->m_regs.CP2C.p[(n << 3) + 7].sd : 0)
 
-static void logGteCommand(PCSX::GTEState::Command command) {
+enum class GTELogStage { Before, After };
+
+static PCSX::GTEState::Snapshot captureGteSnapshot() {
+    PCSX::GTEState::Snapshot snapshot{};
+    snapshot.vertices = {{{VX0, VY0, VZ0},
+                          {static_cast<int16_t>(VX1), static_cast<int16_t>(VY1), static_cast<int16_t>(VZ1)},
+                          {static_cast<int16_t>(VX2), static_cast<int16_t>(VY2), static_cast<int16_t>(VZ2)}}};
+    snapshot.screenCoords = {{{static_cast<int16_t>(SX0), static_cast<int16_t>(SY0)},
+                              {static_cast<int16_t>(SX1), static_cast<int16_t>(SY1)},
+                              {static_cast<int16_t>(SX2), static_cast<int16_t>(SY2)}}};
+    snapshot.rotationMatrix = {{{R11, R12, R13}, {R21, R22, R23}, {R31, R32, R33}}};
+    snapshot.lightMatrix = {{{L11, L12, L13}, {L21, L22, L23}, {L31, L32, L33}}};
+    snapshot.colorMatrix = {{{LR1, LR2, LR3}, {LG1, LG2, LG3}, {LB1, LB2, LB3}}};
+    snapshot.translation = {TRX, TRY, TRZ};
+    snapshot.offsetX = OFX;
+    snapshot.offsetY = OFY;
+    snapshot.projectionPlaneDistance = H;
+    snapshot.depthQueueA = DQA;
+    snapshot.depthQueueB = DQB;
+    snapshot.depthScaleFactor3 = ZSF3;
+    snapshot.depthScaleFactor4 = ZSF4;
+    for (size_t i = 0; i < snapshot.dataRegisters.size(); ++i) {
+        snapshot.dataRegisters[i] = PCSX::g_emulator->m_cpu->m_regs.CP2D.p[i].d;
+        snapshot.controlRegisters[i] = PCSX::g_emulator->m_cpu->m_regs.CP2C.p[i].d;
+    }
+    return snapshot;
+}
+
+static void logGteCommand(PCSX::GTEState::Command command, GTELogStage stage) {
     if (!PCSX::g_emulator->m_gpuLogger) return;
-    PCSX::GTEState state{};
-    state.command = command;
-    state.vertices = {{{VX0, VY0, VZ0},
-                       {static_cast<int16_t>(VX1), static_cast<int16_t>(VY1), static_cast<int16_t>(VZ1)},
-                       {static_cast<int16_t>(VX2), static_cast<int16_t>(VY2), static_cast<int16_t>(VZ2)}}};
-    state.screenCoords = {{{static_cast<int16_t>(SX0), static_cast<int16_t>(SY0)},
-                           {static_cast<int16_t>(SX1), static_cast<int16_t>(SY1)},
-                           {static_cast<int16_t>(SX2), static_cast<int16_t>(SY2)}}};
-    state.rotationMatrix = {{{R11, R12, R13}, {R21, R22, R23}, {R31, R32, R33}}};
-    state.lightMatrix = {{{L11, L12, L13}, {L21, L22, L23}, {L31, L32, L33}}};
-    state.colorMatrix = {{{LR1, LR2, LR3}, {LG1, LG2, LG3}, {LB1, LB2, LB3}}};
-    state.translation = {TRX, TRY, TRZ};
-    state.offsetX = OFX;
-    state.offsetY = OFY;
-    state.projectionPlaneDistance = H;
-    state.depthQueueA = DQA;
-    state.depthQueueB = DQB;
-    state.depthScaleFactor3 = ZSF3;
-    state.depthScaleFactor4 = ZSF4;
-    PCSX::g_emulator->m_gpuLogger->recordGteState(state);
+
+    static std::optional<PCSX::GTEState> s_currentLog;
+
+    if (stage == GTELogStage::Before) {
+        s_currentLog = PCSX::GTEState{};
+        s_currentLog->command = command;
+        s_currentLog->pc = PCSX::g_emulator->m_cpu->m_regs.pc;
+        s_currentLog->input = captureGteSnapshot();
+        return;
+    }
+
+    if (!s_currentLog) {
+        s_currentLog = PCSX::GTEState{};
+        s_currentLog->command = command;
+        s_currentLog->pc = PCSX::g_emulator->m_cpu->m_regs.pc;
+    }
+
+    s_currentLog->output = captureGteSnapshot();
+    PCSX::g_emulator->m_gpuLogger->recordGteState(*s_currentLog);
+    s_currentLog.reset();
 }
 
 static int32_t LIM(int32_t value, int32_t max, int32_t min, uint32_t flag) {
@@ -521,6 +550,8 @@ static int32_t Lm_H(int64_t value, int sf) {
 void PCSX::GTE::RTPS(uint32_t op) {
     GTE_LOG("%08x GTE: RTPS|", op);
 
+    logGteCommand(GTEState::Command::RTPS, GTELogStage::Before);
+
     const int lm = GTE_LM(gteop(op));
     s_sf = GTE_SF(gteop(op));
     FLAG = 0;
@@ -550,11 +581,12 @@ void PCSX::GTE::RTPS(uint32_t op) {
     MAC0 = F((int64_t)DQB + ((int64_t)DQA * h_over_sz3));
     IR0 = Lm_H(s_mac0, 1);
 
-    logGteCommand(GTEState::Command::RTPS);
+    logGteCommand(GTEState::Command::RTPS, GTELogStage::After);
 }
 
 void PCSX::GTE::NCLIP(uint32_t op) {
     GTE_LOG("%08x GTE: NCLIP|", op);
+    logGteCommand(GTEState::Command::NCLIP, GTELogStage::Before);
     FLAG = 0;
 
     if (PGXP_NLCIP_valid(SXY0, SXY1, SXY2))
@@ -562,11 +594,13 @@ void PCSX::GTE::NCLIP(uint32_t op) {
     else
         MAC0 = F((int64_t)(SX0 * SY1) + (SX1 * SY2) + (SX2 * SY0) - (SX0 * SY2) - (SX1 * SY0) - (SX2 * SY1));
 
-    logGteCommand(GTEState::Command::NCLIP);
+    logGteCommand(GTEState::Command::NCLIP, GTELogStage::After);
 }
 
 void PCSX::GTE::OP(uint32_t op) {
     GTE_LOG("%08x GTE: OP|", op);
+
+    logGteCommand(GTEState::Command::OP, GTELogStage::Before);
 
     const int lm = GTE_LM(gteop(op));
     s_sf = GTE_SF(gteop(op));
@@ -578,10 +612,14 @@ void PCSX::GTE::OP(uint32_t op) {
     IR1 = Lm_B1(MAC1, lm);
     IR2 = Lm_B2(MAC2, lm);
     IR3 = Lm_B3(MAC3, lm);
+
+    logGteCommand(GTEState::Command::OP, GTELogStage::After);
 }
 
 void PCSX::GTE::DPCS(uint32_t op) {
     GTE_LOG("%08x GTE: DPCS|", op);
+
+    logGteCommand(GTEState::Command::DPCS, GTELogStage::Before);
 
     const int lm = GTE_LM(gteop(op));
     s_sf = GTE_SF(gteop(op));
@@ -599,10 +637,14 @@ void PCSX::GTE::DPCS(uint32_t op) {
     R2 = Lm_C1(MAC1 >> 4);
     G2 = Lm_C2(MAC2 >> 4);
     B2 = Lm_C3(MAC3 >> 4);
+
+    logGteCommand(GTEState::Command::DPCS, GTELogStage::After);
 }
 
 void PCSX::GTE::INTPL(uint32_t op) {
     GTE_LOG("%08x GTE: INTPL|", op);
+
+    logGteCommand(GTEState::Command::INTPL, GTELogStage::Before);
 
     const int lm = GTE_LM(gteop(op));
     s_sf = GTE_SF(gteop(op));
@@ -620,10 +662,14 @@ void PCSX::GTE::INTPL(uint32_t op) {
     R2 = Lm_C1(MAC1 >> 4);
     G2 = Lm_C2(MAC2 >> 4);
     B2 = Lm_C3(MAC3 >> 4);
+
+    logGteCommand(GTEState::Command::INTPL, GTELogStage::After);
 }
 
 void PCSX::GTE::MVMVA(uint32_t op) {
     GTE_LOG("%08x GTE: MVMVA|", op);
+
+    logGteCommand(GTEState::Command::MVMVA, GTELogStage::Before);
 
     const int lm = GTE_LM(gteop(op));
     s_sf = GTE_SF(gteop(op));
@@ -653,10 +699,14 @@ void PCSX::GTE::MVMVA(uint32_t op) {
     IR1 = Lm_B1(MAC1, lm);
     IR2 = Lm_B2(MAC2, lm);
     IR3 = Lm_B3(MAC3, lm);
+
+    logGteCommand(GTEState::Command::MVMVA, GTELogStage::After);
 }
 
 void PCSX::GTE::NCDS(uint32_t op) {
     GTE_LOG("%08x GTE: NCDS|", op);
+
+    logGteCommand(GTEState::Command::NCDS, GTELogStage::Before);
 
     const int lm = GTE_LM(gteop(op));
     s_sf = GTE_SF(gteop(op));
@@ -686,10 +736,14 @@ void PCSX::GTE::NCDS(uint32_t op) {
     R2 = Lm_C1(MAC1 >> 4);
     G2 = Lm_C2(MAC2 >> 4);
     B2 = Lm_C3(MAC3 >> 4);
+
+    logGteCommand(GTEState::Command::NCDS, GTELogStage::After);
 }
 
 void PCSX::GTE::CDP(uint32_t op) {
     GTE_LOG("%08x GTE: CDP|", op);
+
+    logGteCommand(GTEState::Command::CDP, GTELogStage::Before);
 
     const int lm = GTE_LM(gteop(op));
     s_sf = GTE_SF(gteop(op));
@@ -713,10 +767,14 @@ void PCSX::GTE::CDP(uint32_t op) {
     R2 = Lm_C1(MAC1 >> 4);
     G2 = Lm_C2(MAC2 >> 4);
     B2 = Lm_C3(MAC3 >> 4);
+
+    logGteCommand(GTEState::Command::CDP, GTELogStage::After);
 }
 
 void PCSX::GTE::NCDT(uint32_t op) {
     GTE_LOG("%08x GTE: NCDT|", op);
+
+    logGteCommand(GTEState::Command::NCDT, GTELogStage::Before);
 
     const int lm = GTE_LM(gteop(op));
     s_sf = GTE_SF(gteop(op));
@@ -748,10 +806,14 @@ void PCSX::GTE::NCDT(uint32_t op) {
         G2 = Lm_C2(MAC2 >> 4);
         B2 = Lm_C3(MAC3 >> 4);
     }
+
+    logGteCommand(GTEState::Command::NCDT, GTELogStage::After);
 }
 
 void PCSX::GTE::NCCS(uint32_t op) {
     GTE_LOG("%08x GTE: NCCS|", op);
+
+    logGteCommand(GTEState::Command::NCCS, GTELogStage::Before);
 
     const int lm = GTE_LM(gteop(op));
     s_sf = GTE_SF(gteop(op));
@@ -781,10 +843,14 @@ void PCSX::GTE::NCCS(uint32_t op) {
     R2 = Lm_C1(MAC1 >> 4);
     G2 = Lm_C2(MAC2 >> 4);
     B2 = Lm_C3(MAC3 >> 4);
+
+    logGteCommand(GTEState::Command::NCCS, GTELogStage::After);
 }
 
 void PCSX::GTE::CC(uint32_t op) {
     GTE_LOG("%08x GTE: CC|", op);
+
+    logGteCommand(GTEState::Command::CC, GTELogStage::Before);
 
     const int lm = GTE_LM(gteop(op));
     s_sf = GTE_SF(gteop(op));
@@ -809,10 +875,14 @@ void PCSX::GTE::CC(uint32_t op) {
     R2 = Lm_C1(MAC1 >> 4);
     G2 = Lm_C2(MAC2 >> 4);
     B2 = Lm_C3(MAC3 >> 4);
+
+    logGteCommand(GTEState::Command::CC, GTELogStage::After);
 }
 
 void PCSX::GTE::NCS(uint32_t op) {
     GTE_LOG("%08x GTE: NCS|", op);
+
+    logGteCommand(GTEState::Command::NCS, GTELogStage::Before);
 
     const int lm = GTE_LM(gteop(op));
     s_sf = GTE_SF(gteop(op));
@@ -836,10 +906,14 @@ void PCSX::GTE::NCS(uint32_t op) {
     R2 = Lm_C1(MAC1 >> 4);
     G2 = Lm_C2(MAC2 >> 4);
     B2 = Lm_C3(MAC3 >> 4);
+
+    logGteCommand(GTEState::Command::NCS, GTELogStage::After);
 }
 
 void PCSX::GTE::NCT(uint32_t op) {
     GTE_LOG("%08x GTE: NCT|", op);
+
+    logGteCommand(GTEState::Command::NCT, GTELogStage::Before);
 
     const int lm = GTE_LM(gteop(op));
     s_sf = GTE_SF(gteop(op));
@@ -865,10 +939,14 @@ void PCSX::GTE::NCT(uint32_t op) {
         G2 = Lm_C2(MAC2 >> 4);
         B2 = Lm_C3(MAC3 >> 4);
     }
+
+    logGteCommand(GTEState::Command::NCT, GTELogStage::After);
 }
 
 void PCSX::GTE::SQR(uint32_t op) {
     GTE_LOG("%08x GTE: SQR|", op);
+
+    logGteCommand(GTEState::Command::SQR, GTELogStage::Before);
 
     const int lm = GTE_LM(gteop(op));
     s_sf = GTE_SF(gteop(op));
@@ -880,10 +958,14 @@ void PCSX::GTE::SQR(uint32_t op) {
     IR1 = Lm_B1(MAC1, lm);
     IR2 = Lm_B2(MAC2, lm);
     IR3 = Lm_B3(MAC3, lm);
+
+    logGteCommand(GTEState::Command::SQR, GTELogStage::After);
 }
 
 void PCSX::GTE::DCPL(uint32_t op) {
     GTE_LOG("%08x GTE: DCPL|", op);
+
+    logGteCommand(GTEState::Command::DCPL, GTELogStage::Before);
 
     const int lm = GTE_LM(gteop(op));
     s_sf = GTE_SF(gteop(op));
@@ -901,10 +983,14 @@ void PCSX::GTE::DCPL(uint32_t op) {
     R2 = Lm_C1(MAC1 >> 4);
     G2 = Lm_C2(MAC2 >> 4);
     B2 = Lm_C3(MAC3 >> 4);
+
+    logGteCommand(GTEState::Command::DCPL, GTELogStage::After);
 }
 
 void PCSX::GTE::DPCT(uint32_t op) {
     GTE_LOG("%08x GTE: DPCT|", op);
+
+    logGteCommand(GTEState::Command::DPCT, GTELogStage::Before);
 
     const int lm = GTE_LM(gteop(op));
     s_sf = GTE_SF(gteop(op));
@@ -924,26 +1010,36 @@ void PCSX::GTE::DPCT(uint32_t op) {
         G2 = Lm_C2(MAC2 >> 4);
         B2 = Lm_C3(MAC3 >> 4);
     }
+
+    logGteCommand(GTEState::Command::DPCT, GTELogStage::After);
 }
 
 void PCSX::GTE::AVSZ3(uint32_t op) {
     GTE_LOG("%08x GTE: AVSZ3|", op);
+    logGteCommand(GTEState::Command::AVSZ3, GTELogStage::Before);
     FLAG = 0;
 
     MAC0 = F((int64_t)(ZSF3 * SZ1) + (ZSF3 * SZ2) + (ZSF3 * SZ3));
     OTZ = Lm_D(s_mac0, 1);
+
+    logGteCommand(GTEState::Command::AVSZ3, GTELogStage::After);
 }
 
 void PCSX::GTE::AVSZ4(uint32_t op) {
     GTE_LOG("%08x GTE: AVSZ4|", op);
+    logGteCommand(GTEState::Command::AVSZ4, GTELogStage::Before);
     FLAG = 0;
 
     MAC0 = F((int64_t)(ZSF4 * SZ0) + (ZSF4 * SZ1) + (ZSF4 * SZ2) + (ZSF4 * SZ3));
     OTZ = Lm_D(s_mac0, 1);
+
+    logGteCommand(GTEState::Command::AVSZ4, GTELogStage::After);
 }
 
 void PCSX::GTE::RTPT(uint32_t op) {
     GTE_LOG("%08x GTE: RTPT|", op);
+
+    logGteCommand(GTEState::Command::RTPT, GTELogStage::Before);
 
     int32_t h_over_sz3;
     const int lm = GTE_LM(gteop(op));
@@ -976,11 +1072,13 @@ void PCSX::GTE::RTPT(uint32_t op) {
     MAC0 = F((int64_t)DQB + ((int64_t)DQA * h_over_sz3));
     IR0 = Lm_H(s_mac0, 1);
 
-    logGteCommand(GTEState::Command::RTPT);
+    logGteCommand(GTEState::Command::RTPT, GTELogStage::After);
 }
 
 void PCSX::GTE::GPL(uint32_t op) {
     GTE_LOG("%08x GTE: GPL|", op);
+
+    logGteCommand(GTEState::Command::GPL, GTELogStage::Before);
 
     const int lm = GTE_LM(gteop(op));
     s_sf = GTE_SF(gteop(op));
@@ -998,10 +1096,14 @@ void PCSX::GTE::GPL(uint32_t op) {
     R2 = Lm_C1(MAC1 >> 4);
     G2 = Lm_C2(MAC2 >> 4);
     B2 = Lm_C3(MAC3 >> 4);
+
+    logGteCommand(GTEState::Command::GPL, GTELogStage::After);
 }
 
 void PCSX::GTE::GPF(uint32_t op) {
     GTE_LOG("%08x GTE: GPF|", op);
+
+    logGteCommand(GTEState::Command::GPF, GTELogStage::Before);
 
     const int lm = GTE_LM(gteop(op));
     s_sf = GTE_SF(gteop(op));
@@ -1019,10 +1121,14 @@ void PCSX::GTE::GPF(uint32_t op) {
     R2 = Lm_C1(MAC1 >> 4);
     G2 = Lm_C2(MAC2 >> 4);
     B2 = Lm_C3(MAC3 >> 4);
+
+    logGteCommand(GTEState::Command::GPF, GTELogStage::After);
 }
 
 void PCSX::GTE::NCCT(uint32_t op) {
     GTE_LOG("%08x GTE: NCCT|", op);
+
+    logGteCommand(GTEState::Command::NCCT, GTELogStage::Before);
 
     const int lm = GTE_LM(gteop(op));
     s_sf = GTE_SF(gteop(op));
@@ -1054,4 +1160,6 @@ void PCSX::GTE::NCCT(uint32_t op) {
         G2 = Lm_C2(MAC2 >> 4);
         B2 = Lm_C3(MAC3 >> 4);
     }
+
+    logGteCommand(GTEState::Command::NCCT, GTELogStage::After);
 }
