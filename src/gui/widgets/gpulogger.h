@@ -22,6 +22,7 @@
 #include <stdint.h>
 
 #include <limits>
+#include <string>
 
 #include "core/gpu.h"
 #include "support/eventbus.h"
@@ -55,6 +56,8 @@ class GPULogger {
     } m_filter = {0, 0};
     bool m_filterEnabled = false;
     bool m_filterProbing = false;
+    std::array<char, 256> m_exportPath{};
+    std::string m_exportStatus;
     EventBus::Listener m_listener;
     GPU::Logged::DrawLogSettings m_settings;
 };

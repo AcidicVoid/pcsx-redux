@@ -19,6 +19,11 @@
 
 #include "core/gpulogger.h"
 
+#include <fstream>
+#include <iomanip>
+#include <sstream>
+#include <string_view>
+
 #include "core/gpu.h"
 #include "core/psxemulator.h"
 #include "core/r3000a.h"
@@ -68,6 +73,62 @@ PCSX::GPULogger::GPULogger() : m_listener(g_system->m_eventBus) {
         }
     });
 }
+
+namespace {
+
+std::string escapeJsonString(std::string_view value) {
+    std::string escaped;
+    escaped.reserve(value.size());
+    for (char c : value) {
+        switch (c) {
+            case '"':
+                escaped += "\\\"";
+                break;
+            case '\\':
+                escaped += "\\\\";
+                break;
+            case '\n':
+                escaped += "\\n";
+                break;
+            case '\r':
+                escaped += "\\r";
+                break;
+            case '\t':
+                escaped += "\\t";
+                break;
+            default:
+                escaped += c;
+                break;
+        }
+    }
+    return escaped;
+}
+
+const char* originToString(PCSX::GPU::Logged::Origin origin) {
+    switch (origin) {
+        case PCSX::GPU::Logged::Origin::DATAWRITE:
+            return "data-write";
+        case PCSX::GPU::Logged::Origin::CTRLWRITE:
+            return "ctrl-write";
+        case PCSX::GPU::Logged::Origin::DIRECT_DMA:
+            return "direct-dma";
+        case PCSX::GPU::Logged::Origin::CHAIN_DMA:
+            return "chain-dma";
+        case PCSX::GPU::Logged::Origin::REPLAY:
+            return "replay";
+    }
+    return "unknown";
+}
+
+std::string colorToHex(uint32_t color) {
+    std::ostringstream stream;
+    stream << "0x" << std::hex << std::setw(6) << std::setfill('0') << (color & 0xffffff);
+    return stream.str();
+}
+
+const char* boolString(bool value) { return value ? "true" : "false"; }
+
+}  // namespace
 
 void PCSX::GPULogger::enable() {
     GLint textureUnits;
@@ -174,6 +235,55 @@ void PCSX::GPULogger::addNodeInternal(GPU::Logged* node, GPU::Logged::Origin ori
 
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, oldFBO);
     g_emulator->m_gpu->setOpenGLContext();
+}
+
+bool PCSX::GPULogger::saveFrameLog(const std::filesystem::path& path) const {
+    std::ofstream output(path);
+    if (!output.is_open()) return false;
+
+    output << "{\n";
+    output << "  \"frame\": " << m_frameCounter << ",\n";
+    output << "  \"commands\": [\n";
+
+    GPU::GPUStats stats;
+    bool first = true;
+    for (auto& logged : m_list) {
+        logged.cumulateStats(&stats);
+        if (!first) output << ",\n";
+        first = false;
+
+        std::ostringstream pcStream;
+        pcStream << std::hex << std::setw(8) << std::setfill('0') << logged.pc;
+
+        std::string name = std::string(logged.getName());
+
+        output << "    {\n";
+        output << "      \"name\": \"" << escapeJsonString(name) << "\",\n";
+        output << "      \"origin\": \"" << originToString(logged.origin) << "\",\n";
+        output << "      \"frame\": " << logged.frame << ",\n";
+        output << "      \"pc\": \"0x" << pcStream.str() << "\",\n";
+        output << "      \"value\": " << logged.value << ",\n";
+        output << "      \"length\": " << logged.length << ",\n";
+        output << "      \"enabled\": " << (logged.enabled ? "true" : "false") << ",\n";
+        output << "      \"highlight\": " << (logged.highlight ? "true" : "false");
+        logged.writeJsonFields(output);
+        output << "\n";
+        output << "    }";
+    }
+
+    output << "\n  ],\n";
+    output << "  \"stats\": {\n";
+    output << "    \"triangles\": " << stats.triangles << ",\n";
+    output << "    \"texturedTriangles\": " << stats.texturedTriangles << ",\n";
+    output << "    \"rectangles\": " << stats.rectangles << ",\n";
+    output << "    \"sprites\": " << stats.sprites << ",\n";
+    output << "    \"pixelWrites\": " << stats.pixelWrites << ",\n";
+    output << "    \"pixelReads\": " << stats.pixelReads << ",\n";
+    output << "    \"texelReads\": " << stats.texelReads << "\n";
+    output << "  }\n";
+    output << "}\n";
+
+    return output.good();
 }
 
 void PCSX::GPULogger::startNewFrame() { m_vram = g_emulator->m_gpu->getVRAM(GPU::Ownership::ACQUIRE); }
@@ -466,6 +576,136 @@ void PCSX::GPU::BlitVramRam::getVertices(AddTri&& add, PixelOp op) {
     if (op == PixelOp::WRITE) return;
     add({int(x), int(y)}, {int(x + w), int(y)}, {int(x + w), int(y + h)});
     add({int(x + w), int(y + h)}, {int(x), int(y + h)}, {int(x), int(y)});
+}
+
+bool PCSX::GPU::FastFill::writeJsonFields(std::ostream& output) const {
+    output << ",\n";
+    output << "      \"details\": {\n";
+    output << "        \"primitive\": \"fast_fill\",\n";
+    output << "        \"color\": \"" << colorToHex(color) << "\",\n";
+    output << "        \"rect\": {\"x\": " << x << ", \"y\": " << y << ", \"w\": " << w << ", \"h\": " << h
+           << "},\n";
+    output << "        \"raw\": {\"x\": " << raw.x << ", \"y\": " << raw.y << ", \"w\": " << raw.w
+           << ", \"h\": " << raw.h << "},\n";
+    output << "        \"clipped\": " << boolString(clipped) << "\n";
+    output << "      }";
+    return true;
+}
+
+bool PCSX::GPU::BlitVramVram::writeJsonFields(std::ostream& output) const {
+    output << ",\n";
+    output << "      \"details\": {\n";
+    output << "        \"primitive\": \"blit_vram_to_vram\",\n";
+    output << "        \"source\": {\"x\": " << sX << ", \"y\": " << sY << ", \"w\": " << w << ", \"h\": " << h
+           << "},\n";
+    output << "        \"destination\": {\"x\": " << dX << ", \"y\": " << dY << ", \"w\": " << w << ", \"h\": " << h
+           << "},\n";
+    output << "        \"raw\": {\"sX\": " << raw.sX << ", \"sY\": " << raw.sY << ", \"dX\": " << raw.dX
+           << ", \"dY\": " << raw.dY << ", \"w\": " << raw.w << ", \"h\": " << raw.h << "},\n";
+    output << "        \"clipped\": " << boolString(clipped) << "\n";
+    output << "      }";
+    return true;
+}
+
+bool PCSX::GPU::BlitRamVram::writeJsonFields(std::ostream& output) const {
+    output << ",\n";
+    output << "      \"details\": {\n";
+    output << "        \"primitive\": \"blit_ram_to_vram\",\n";
+    output << "        \"destination\": {\"x\": " << x << ", \"y\": " << y << ", \"w\": " << w << ", \"h\": " << h
+           << "},\n";
+    output << "        \"raw\": {\"x\": " << raw.x << ", \"y\": " << raw.y << ", \"w\": " << raw.w
+           << ", \"h\": " << raw.h << "},\n";
+    output << "        \"clipped\": " << boolString(clipped) << ",\n";
+    output << "        \"dataBytes\": " << data.size() << "\n";
+    output << "      }";
+    return true;
+}
+
+bool PCSX::GPU::BlitVramRam::writeJsonFields(std::ostream& output) const {
+    output << ",\n";
+    output << "      \"details\": {\n";
+    output << "        \"primitive\": \"blit_vram_to_ram\",\n";
+    output << "        \"source\": {\"x\": " << x << ", \"y\": " << y << ", \"w\": " << w << ", \"h\": " << h
+           << "},\n";
+    output << "        \"raw\": {\"x\": " << raw.x << ", \"y\": " << raw.y << ", \"w\": " << raw.w
+           << ", \"h\": " << raw.h << "},\n";
+    output << "        \"clipped\": " << boolString(clipped) << "\n";
+    output << "      }";
+    return true;
+}
+
+bool PCSX::GPU::TPage::writeJsonFields(std::ostream& output) const {
+    output << ",\n";
+    output << "      \"details\": {\n";
+    output << "        \"primitive\": \"texture_page\",\n";
+    output << "        \"raw\": " << raw << ",\n";
+    output << "        \"tx\": " << tx << ",\n";
+    output << "        \"ty\": " << ty << ",\n";
+    output << "        \"blendFunction\": \"" << blendFunctionToString(blendFunction) << "\",\n";
+    output << "        \"depth\": \"" << texDepthToString(texDepth) << "\",\n";
+    output << "        \"dither\": " << boolString(dither) << ",\n";
+    output << "        \"drawToDisplay\": " << boolString(drawToDisplay) << ",\n";
+    output << "        \"textureDisable\": " << boolString(texDisable) << ",\n";
+    output << "        \"xflip\": " << boolString(xflip) << ",\n";
+    output << "        \"yflip\": " << boolString(yflip) << "\n";
+    output << "      }";
+    return true;
+}
+
+bool PCSX::GPU::TWindow::writeJsonFields(std::ostream& output) const {
+    output << ",\n";
+    output << "      \"details\": {\n";
+    output << "        \"primitive\": \"texture_window\",\n";
+    output << "        \"raw\": " << raw << ",\n";
+    output << "        \"x\": " << x << ",\n";
+    output << "        \"y\": " << y << ",\n";
+    output << "        \"w\": " << w << ",\n";
+    output << "        \"h\": " << h << "\n";
+    output << "      }";
+    return true;
+}
+
+bool PCSX::GPU::DrawingAreaStart::writeJsonFields(std::ostream& output) const {
+    output << ",\n";
+    output << "      \"details\": {\n";
+    output << "        \"primitive\": \"drawing_area_start\",\n";
+    output << "        \"raw\": " << raw << ",\n";
+    output << "        \"x\": " << x << ",\n";
+    output << "        \"y\": " << y << "\n";
+    output << "      }";
+    return true;
+}
+
+bool PCSX::GPU::DrawingAreaEnd::writeJsonFields(std::ostream& output) const {
+    output << ",\n";
+    output << "      \"details\": {\n";
+    output << "        \"primitive\": \"drawing_area_end\",\n";
+    output << "        \"raw\": " << raw << ",\n";
+    output << "        \"x\": " << x << ",\n";
+    output << "        \"y\": " << y << "\n";
+    output << "      }";
+    return true;
+}
+
+bool PCSX::GPU::DrawingOffset::writeJsonFields(std::ostream& output) const {
+    output << ",\n";
+    output << "      \"details\": {\n";
+    output << "        \"primitive\": \"drawing_offset\",\n";
+    output << "        \"raw\": " << raw << ",\n";
+    output << "        \"x\": " << x << ",\n";
+    output << "        \"y\": " << y << "\n";
+    output << "      }";
+    return true;
+}
+
+bool PCSX::GPU::MaskBit::writeJsonFields(std::ostream& output) const {
+    output << ",\n";
+    output << "      \"details\": {\n";
+    output << "        \"primitive\": \"mask_bit\",\n";
+    output << "        \"set\": " << boolString(set) << ",\n";
+    output << "        \"check\": " << boolString(check) << "\n";
+    output << "      }";
+    return true;
 }
 
 void PCSX::GPU::Logged::addLine(AddTri&& add, int x1, int y1, int x2, int y2) {

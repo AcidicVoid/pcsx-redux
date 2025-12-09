@@ -19,6 +19,9 @@
 
 #include "gui/widgets/gpulogger.h"
 
+#include <cstdio>
+#include <filesystem>
+
 #include "core/gpulogger.h"
 #include "core/psxemulator.h"
 #include "core/system.h"
@@ -37,6 +40,8 @@ PCSX::Widgets::GPULogger::GPULogger(bool& show) : m_show(show), m_listener(g_sys
         m_filter.y = event.y;
         m_filterProbing = false;
     });
+
+    std::snprintf(m_exportPath.data(), m_exportPath.size(), "gpulogger_frame.json");
 }
 
 void PCSX::Widgets::GPULogger::draw(PCSX::GPULogger* logger, const char* title) {
@@ -163,6 +168,20 @@ void PCSX::Widgets::GPULogger::draw(PCSX::GPULogger* logger, const char* title) 
         ImGui::Text(_("%i texel reads"), stats.texelReads);
 
         ImGui::TreePop();
+    }
+    ImGui::Separator();
+    ImGui::InputText(_("Export file path"), m_exportPath.data(), m_exportPath.size());
+    ImGui::SameLine();
+    if (ImGui::Button(_("Save frame log"))) {
+        auto path = std::filesystem::path(m_exportPath.data());
+        if (logger->saveFrameLog(path)) {
+            m_exportStatus = fmt::format(f_("Saved frame {} to {}"), logger->m_frameCounter, path.string());
+        } else {
+            m_exportStatus = fmt::format(f_("Failed to save frame to {}"), path.string());
+        }
+    }
+    if (!m_exportStatus.empty()) {
+        ImGui::TextWrapped("%s", m_exportStatus.c_str());
     }
     ImGui::Separator();
     ImGui::BeginChild("DrawCalls");

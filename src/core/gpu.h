@@ -21,9 +21,12 @@
 
 #include <stdint.h>
 
+#include <array>
+#include <filesystem>
 #include <functional>
 #include <magic_enum_all.hpp>
 #include <memory>
+#include <ostream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -171,6 +174,7 @@ class GPU {
         virtual void generateStatsInfo() = 0;
         virtual void cumulateStats(GPUStats *) = 0;
         virtual void getVertices(AddTri &&, PixelOp) = 0;
+        virtual bool writeJsonFields(std::ostream &) const { return false; }
         virtual bool isInside(unsigned x, unsigned y) { return false; }
         void addLine(AddTri &&, int x1, int y1, int x2, int y2);
 
@@ -315,6 +319,7 @@ class GPU {
         void generateStatsInfo() override {}
         void cumulateStats(GPUStats *) override;
         void getVertices(AddTri &&, PixelOp) override;
+        bool writeJsonFields(std::ostream &) const override;
         FastFill(GPU *parent) : Command(parent) {}
         void processWrite(Buffer &, Logged::Origin, uint32_t value, uint32_t length) override;
         void reset() override { m_state = READ_COLOR; }
@@ -342,6 +347,7 @@ class GPU {
         void generateStatsInfo() override {}
         void cumulateStats(GPUStats *) override;
         void getVertices(AddTri &&, PixelOp) override;
+        bool writeJsonFields(std::ostream &) const override;
         BlitVramVram(GPU *parent) : Command(parent) {}
         void processWrite(Buffer &, Logged::Origin, uint32_t value, uint32_t length) override;
         void reset() override { m_state = READ_COMMAND; }
@@ -368,6 +374,7 @@ class GPU {
         void generateStatsInfo() override {}
         void cumulateStats(GPUStats *) override;
         void getVertices(AddTri &&, PixelOp) override;
+        bool writeJsonFields(std::ostream &) const override;
         BlitRamVram() {}
         BlitRamVram(GPU *parent) : Command(parent) {}
         BlitRamVram(const BlitRamVram &other) {
@@ -408,6 +415,7 @@ class GPU {
         void generateStatsInfo() override {}
         void cumulateStats(GPUStats *) override;
         void getVertices(AddTri &&, PixelOp) override;
+        bool writeJsonFields(std::ostream &) const override;
         BlitVramRam(GPU *parent) : Command(parent) {}
         void processWrite(Buffer &, Logged::Origin, uint32_t value, uint32_t length) override;
 
@@ -431,6 +439,7 @@ class GPU {
         void generateStatsInfo() override {}
         void cumulateStats(GPUStats *) override {}
         void getVertices(AddTri &&, PixelOp) override {}
+        bool writeJsonFields(std::ostream &) const override;
         TPage() {}
         TPage(uint32_t value);
         TPage(const TPage &other) = default;
@@ -454,6 +463,7 @@ class GPU {
         void generateStatsInfo() override {}
         void cumulateStats(GPUStats *) override {}
         void getVertices(AddTri &&, PixelOp) override {}
+        bool writeJsonFields(std::ostream &) const override;
         TWindow() {}
         TWindow(uint32_t value);
         TWindow(const TWindow &other) = default;
@@ -470,6 +480,7 @@ class GPU {
         void generateStatsInfo() override {}
         void cumulateStats(GPUStats *) override {}
         void getVertices(AddTri &&, PixelOp) override {}
+        bool writeJsonFields(std::ostream &) const override;
         DrawingAreaStart(uint32_t value);
         DrawingAreaStart(const DrawingAreaStart &other) = default;
         DrawingAreaStart(DrawingAreaStart &&other) = default;
@@ -485,6 +496,7 @@ class GPU {
         void generateStatsInfo() override {}
         void cumulateStats(GPUStats *) override {}
         void getVertices(AddTri &&, PixelOp) override {}
+        bool writeJsonFields(std::ostream &) const override;
         DrawingAreaEnd(uint32_t value);
         DrawingAreaEnd(const DrawingAreaEnd &other) = default;
         DrawingAreaEnd(DrawingAreaEnd &&other) = default;
@@ -500,6 +512,7 @@ class GPU {
         void generateStatsInfo() override {}
         void cumulateStats(GPUStats *) override {}
         void getVertices(AddTri &&, PixelOp) override {}
+        bool writeJsonFields(std::ostream &) const override;
         DrawingOffset() {}
         DrawingOffset(uint32_t value);
         DrawingOffset(const DrawingOffset &other) = default;
@@ -516,6 +529,7 @@ class GPU {
         void generateStatsInfo() override {}
         void cumulateStats(GPUStats *) override {}
         void getVertices(AddTri &&, PixelOp) override {}
+        bool writeJsonFields(std::ostream &) const override;
         MaskBit(uint32_t value);
         MaskBit(const MaskBit &other) = default;
         MaskBit(MaskBit &&other) = default;
@@ -533,6 +547,7 @@ class GPU {
         void generateStatsInfo() override;
         void cumulateStats(GPUStats *) override;
         void getVertices(AddTri &&, PixelOp) override;
+        bool writeJsonFields(std::ostream &) const override;
         Poly() {}
         void processWrite(Buffer &, Logged::Origin, uint32_t value, uint32_t length) override;
         void reset() override {
@@ -598,6 +613,7 @@ class GPU {
         void generateStatsInfo() override;
         void cumulateStats(GPUStats *) override;
         void getVertices(AddTri &&, PixelOp) override;
+        bool writeJsonFields(std::ostream &) const override;
         Line() {
             if constexpr (lineType == LineType::Simple) m_count = 0;
         }
@@ -650,6 +666,7 @@ class GPU {
         void generateStatsInfo() override {}
         void cumulateStats(GPUStats *) override;
         void getVertices(AddTri &&, PixelOp) override;
+        bool writeJsonFields(std::ostream &) const override;
         Rect() {}
         void processWrite(Buffer &, Logged::Origin, uint32_t value, uint32_t length) override;
         void reset() override { m_state = READ_COLOR; }
