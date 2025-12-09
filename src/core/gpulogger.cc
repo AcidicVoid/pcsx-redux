@@ -147,7 +147,14 @@ std::string escapeJsonString(std::string_view value) {
                 escaped += "\\t";
                 break;
             default:
-                escaped += c;
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    std::ostringstream hex;
+                    hex << "\\u" << std::hex << std::setw(4) << std::setfill('0')
+                        << static_cast<int>(static_cast<unsigned char>(c));
+                    escaped += hex.str();
+                } else {
+                    escaped += c;
+                }
                 break;
         }
     }
@@ -445,7 +452,7 @@ bool PCSX::GPULogger::saveFrameLog(const std::filesystem::path& path) {
         pcStream << std::hex << std::setw(8) << std::setfill('0') << state.pc;
 
         output << "    {\n";
-        output << "      \"command\": \"" << gteCommandToString(state.command) << "\",\n";
+        output << "      \"command\": \"" << escapeJsonString(gteCommandToString(state.command)) << "\",\n";
         output << "      \"pc\": \"0x" << pcStream.str() << "\",\n";
         writeGteSnapshotJson(output, "input", state.input, "      ");
         output << ",\n";
@@ -474,7 +481,7 @@ bool PCSX::GPULogger::saveFrameLog(const std::filesystem::path& path) {
 
         output << "    {\n";
         output << "      \"name\": \"" << escapeJsonString(name) << "\",\n";
-        output << "      \"origin\": \"" << originToString(logged.origin) << "\",\n";
+        output << "      \"origin\": \"" << escapeJsonString(originToString(logged.origin)) << "\",\n";
         output << "      \"frame\": " << logged.frame << ",\n";
         output << "      \"pc\": \"0x" << pcStream.str() << "\",\n";
         output << "      \"source\": {\"address\": " << logged.sourceAddr << ", \"length\": " << logged.length
@@ -494,7 +501,7 @@ bool PCSX::GPULogger::saveFrameLog(const std::filesystem::path& path) {
             gtePc << std::hex << std::setw(8) << std::setfill('0') << gte.pc;
             output << ",\n";
             output << "      \"gte\": {\n";
-            output << "        \"command\": \"" << gteCommandToString(gte.command) << "\",\n";
+            output << "        \"command\": \"" << escapeJsonString(gteCommandToString(gte.command)) << "\",\n";
             output << "        \"pc\": \"0x" << gtePc.str() << "\",\n";
             writeGteSnapshotJson(output, "input", gte.input, "        ");
             output << ",\n";
