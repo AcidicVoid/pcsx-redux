@@ -1329,8 +1329,10 @@ bool PCSX::GPU::Line<shading, lineType, blend>::writeJsonFields(std::ostream &ou
                << ", \"screenY\": " << y[i] + offset.y;
         if constexpr (shading == Shading::Gouraud) {
             output << ", \"color\": \"" << colorToHex(colors[i]) << "\"";
-        } else if constexpr (shading == Shading::Flat && i == 0) {
-            output << ", \"color\": \"" << colorToHex(colors[0]) << "\"";
+        } else if constexpr (shading == Shading::Flat) {
+            if (i == 0) {
+                output << ", \"color\": \"" << colorToHex(colors[0]) << "\"";
+            }
         }
         output << "}" << (i + 1 < x.size() ? "," : "") << "\n";
     }

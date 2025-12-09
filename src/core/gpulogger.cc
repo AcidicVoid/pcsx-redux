@@ -641,8 +641,8 @@ bool PCSX::GPU::TPage::writeJsonFields(std::ostream& output) const {
     output << "        \"raw\": " << raw << ",\n";
     output << "        \"tx\": " << tx << ",\n";
     output << "        \"ty\": " << ty << ",\n";
-    output << "        \"blendFunction\": \"" << blendFunctionToString(blendFunction) << "\",\n";
-    output << "        \"depth\": \"" << texDepthToString(texDepth) << "\",\n";
+    output << "        \"blendFunction\": \"" << PCSX::GPU::blendFunctionToString(blendFunction) << "\",\n";
+    output << "        \"depth\": \"" << PCSX::GPU::texDepthToString(texDepth) << "\",\n";
     output << "        \"dither\": " << boolString(dither) << ",\n";
     output << "        \"drawToDisplay\": " << boolString(drawToDisplay) << ",\n";
     output << "        \"textureDisable\": " << boolString(texDisable) << ",\n";

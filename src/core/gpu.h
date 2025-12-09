@@ -301,8 +301,8 @@ class GPU {
     };
     enum class TexDepth { Tex4Bits, Tex8Bits, Tex16Bits };
 
-    const char *blendFunctionToString(BlendFunction function);
-    const char *texDepthToString(TexDepth depth);
+    static const char *blendFunctionToString(BlendFunction function);
+    static const char *texDepthToString(TexDepth depth);
 
     struct EmptyColor {};
 
@@ -587,14 +587,14 @@ class GPU {
         POLYFILL_NO_UNIQUE_ADDRESS
         typename std::conditional<textured == Textured::Yes, uint16_t, EmptyClutRAW>::type clutraw;
         DrawingOffset offset;
-        TextureUnitType clutX() {
+        TextureUnitType clutX() const {
             if constexpr (textured == Textured::Yes) {
                 return (clutraw & 0x3f) * 16;
             } else {
                 return {};
             }
         }
-        TextureUnitType clutY() {
+        TextureUnitType clutY() const {
             if constexpr (textured == Textured::Yes) {
                 return (clutraw >> 6) & 0x1ff;
             } else {
@@ -699,14 +699,14 @@ class GPU {
         POLYFILL_NO_UNIQUE_ADDRESS
         typename std::conditional<textured == Textured::Yes, uint16_t, EmptyClutRAW>::type clutraw;
         DrawingOffset offset;
-        TextureUnitType clutX() {
+        TextureUnitType clutX() const {
             if constexpr (textured == Textured::Yes) {
                 return (clutraw & 0x3f) * 16;
             } else {
                 return {};
             }
         }
-        TextureUnitType clutY() {
+        TextureUnitType clutY() const {
             if constexpr (textured == Textured::Yes) {
                 return (clutraw >> 6) & 0x1ff;
             } else {
