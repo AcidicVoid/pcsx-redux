@@ -324,7 +324,16 @@ bool PCSX::GPULogger::saveFrameLog(const std::filesystem::path& path) {
                    << gte.colorMatrix[1][2] << "], [" << gte.colorMatrix[2][0] << ", " << gte.colorMatrix[2][1] << ", "
                    << gte.colorMatrix[2][2] << "]],\n";
             output << "        \"translation\": [" << gte.translation[0] << ", " << gte.translation[1] << ", "
-                   << gte.translation[2] << "]\n";
+                   << gte.translation[2] << "],\n";
+            output << "        \"projection\": {\n";
+            output << "          \"offsetX\": " << gte.offsetX << ",\n";
+            output << "          \"offsetY\": " << gte.offsetY << ",\n";
+            output << "          \"projectionPlaneDistance\": " << gte.projectionPlaneDistance << ",\n";
+            output << "          \"depthQueueA\": " << gte.depthQueueA << ",\n";
+            output << "          \"depthQueueB\": " << gte.depthQueueB << ",\n";
+            output << "          \"depthScaleFactor3\": " << gte.depthScaleFactor3 << ",\n";
+            output << "          \"depthScaleFactor4\": " << gte.depthScaleFactor4 << "\n";
+            output << "        }\n";
             output << "      }";
         }
         logged.writeJsonFields(output);
