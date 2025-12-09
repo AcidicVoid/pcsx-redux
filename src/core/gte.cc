@@ -148,25 +148,6 @@
 #define GTE_LM(op) ((op >> 10) & 1)
 #define GTE_FUNCT(op) (op & 63)
 
-static void logGteInputs() {
-    if (!PCSX::g_emulator->m_gpuLogger) return;
-    PCSX::GTEState state{};
-    state.vx0 = {VX0, VY0, VZ0};
-    state.vx1 = {VX1, VY1, VZ1};
-    state.vx2 = {VX2, VY2, VZ2};
-    state.rotationMatrix = {R11, R12, R13};
-    state.rotationMatrixRow2 = {R21, R22, R23};
-    state.rotationMatrixRow3 = {R31, R32, R33};
-    state.lightMatrix = {L11, L12, L13};
-    state.lightMatrixRow2 = {L21, L22, L23};
-    state.lightMatrixRow3 = {L31, L32, L33};
-    state.colorMatrix = {LR1, LR2, LR3};
-    state.colorMatrixRow2 = {LG1, LG2, LG3};
-    state.colorMatrixRow3 = {LB1, LB2, LB3};
-    state.translation = {TRX, TRY, TRZ};
-    PCSX::g_emulator->m_gpuLogger->recordGteState(state);
-}
-
 #define VX0 (PCSX::g_emulator->m_cpu->m_regs.CP2D.p[0].sw.l)
 #define VY0 (PCSX::g_emulator->m_cpu->m_regs.CP2D.p[0].sw.h)
 #define VZ0 (PCSX::g_emulator->m_cpu->m_regs.CP2D.p[1].sw.l)
@@ -286,6 +267,25 @@ static void logGteInputs() {
 #define CV1(n) (n < 3 ? PCSX::g_emulator->m_cpu->m_regs.CP2C.p[(n << 3) + 5].sd : 0)
 #define CV2(n) (n < 3 ? PCSX::g_emulator->m_cpu->m_regs.CP2C.p[(n << 3) + 6].sd : 0)
 #define CV3(n) (n < 3 ? PCSX::g_emulator->m_cpu->m_regs.CP2C.p[(n << 3) + 7].sd : 0)
+
+static void logGteInputs() {
+    if (!PCSX::g_emulator->m_gpuLogger) return;
+    PCSX::GTEState state{};
+    state.vx0 = {VX0, VY0, VZ0};
+    state.vx1 = {VX1, VY1, VZ1};
+    state.vx2 = {VX2, VY2, VZ2};
+    state.rotationMatrix = {R11, R12, R13};
+    state.rotationMatrixRow2 = {R21, R22, R23};
+    state.rotationMatrixRow3 = {R31, R32, R33};
+    state.lightMatrix = {L11, L12, L13};
+    state.lightMatrixRow2 = {L21, L22, L23};
+    state.lightMatrixRow3 = {L31, L32, L33};
+    state.colorMatrix = {LR1, LR2, LR3};
+    state.colorMatrixRow2 = {LG1, LG2, LG3};
+    state.colorMatrixRow3 = {LB1, LB2, LB3};
+    state.translation = {TRX, TRY, TRZ};
+    PCSX::g_emulator->m_gpuLogger->recordGteState(state);
+}
 
 static int32_t LIM(int32_t value, int32_t max, int32_t min, uint32_t flag) {
     if (value > max) {
