@@ -401,8 +401,11 @@ std::vector<SerializedCommand> serializeCommands(const PCSX::GPU::LoggedList& li
     return serialized;
 }
 
-std::string renderGteSection(const std::vector<PCSX::GTEState>& gteFrameLog) {
-    std::ostringstream output;
+void writeFrameLog(std::ostream& output, uint64_t frameCounter, const std::vector<PCSX::GTEState>& gteFrameLog,
+                   const std::vector<std::string>& commands, const PCSX::GPU::GPUStats& stats) {
+    output << "{\n";
+    output << "  \"frame\": " << frameCounter << ",\n";
+    output << "  \"gte\": [\n";
 
     bool firstGte = true;
     for (const auto& state : gteFrameLog) {
@@ -425,47 +428,8 @@ std::string renderGteSection(const std::vector<PCSX::GTEState>& gteFrameLog) {
         output << "\n    }";
     }
 
-    return output.str();
-}
-
-std::string renderStatsSection(const PCSX::GPU::GPUStats& stats) {
-    std::ostringstream output;
-    output << "  \"stats\": {\n";
-    output << "    \"triangles\": " << stats.triangles << ",\n";
-    output << "    \"texturedTriangles\": " << stats.texturedTriangles << ",\n";
-    output << "    \"rectangles\": " << stats.rectangles << ",\n";
-    output << "    \"sprites\": " << stats.sprites << ",\n";
-    output << "    \"pixelWrites\": " << stats.pixelWrites << ",\n";
-    output << "    \"pixelReads\": " << stats.pixelReads << ",\n";
-    output << "    \"texelReads\": " << stats.texelReads << "\n";
-    output << "  }";
-    return output.str();
-}
-
-std::string renderFrameHeader(uint64_t frameCounter, const std::string& gteSection) {
-    std::ostringstream output;
-    output << "{\n";
-    output << "  \"frame\": " << frameCounter << ",\n";
-    output << "  \"gte\": [\n";
-    output << gteSection;
     output << "\n  ],\n";
     output << "  \"commands\": [\n";
-    return output.str();
-}
-
-size_t estimateFrameLogSize(const std::string& header, size_t commandsSize, const PCSX::GPU::GPUStats& stats) {
-    auto statsSection = renderStatsSection(stats);
-
-    // commandsSize already accounts for any separators, so only add the static suffix and prefix lengths.
-    constexpr std::string_view closingCommands = "\n  ],\n";
-    constexpr std::string_view footerSuffix = "\n}\n";
-
-    return header.size() + commandsSize + closingCommands.size() + statsSection.size() + footerSuffix.size();
-}
-
-void writeFrameLog(std::ostream& output, const std::string& header, const std::vector<std::string>& commands,
-                   const PCSX::GPU::GPUStats& stats) {
-    output << header;
 
     bool first = true;
     for (const auto& command : commands) {
@@ -475,8 +439,16 @@ void writeFrameLog(std::ostream& output, const std::string& header, const std::v
     }
 
     output << "\n  ],\n";
-    output << renderStatsSection(stats);
-    output << "\n}\n";
+    output << "  \"stats\": {\n";
+    output << "    \"triangles\": " << stats.triangles << ",\n";
+    output << "    \"texturedTriangles\": " << stats.texturedTriangles << ",\n";
+    output << "    \"rectangles\": " << stats.rectangles << ",\n";
+    output << "    \"sprites\": " << stats.sprites << ",\n";
+    output << "    \"pixelWrites\": " << stats.pixelWrites << ",\n";
+    output << "    \"pixelReads\": " << stats.pixelReads << ",\n";
+    output << "    \"texelReads\": " << stats.texelReads << "\n";
+    output << "  }\n";
+    output << "}\n";
 }
 
 }  // namespace
@@ -609,9 +581,7 @@ bool PCSX::GPULogger::saveFrameLog(const std::filesystem::path& path) {
     std::ofstream output(path);
     if (!output.is_open()) return false;
 
-    const auto gteSection = renderGteSection(m_gteFrameLog);
-    const auto header = renderFrameHeader(m_frameCounter, gteSection);
-    writeFrameLog(output, header, commands, stats);
+    writeFrameLog(output, m_frameCounter, m_gteFrameLog, commands, stats);
 
     return output.good();
 }
@@ -625,14 +595,6 @@ size_t PCSX::GPULogger::saveFrameLogSplit(const std::filesystem::path& path, siz
         basePath.replace_extension(".json");
     }
 
-    const auto gteSection = renderGteSection(m_gteFrameLog);
-    const auto header = renderFrameHeader(m_frameCounter, gteSection);
-
-    // Even an empty part would exceed the size limit, bail out to avoid an endless loop.
-    if (estimateFrameLogSize(header, 0, {}) > maxBytes) {
-        return 0;
-    }
-
     if (serialized.empty()) {
         std::ostringstream suffix;
         suffix << "_" << std::setfill('0') << std::setw(2) << 1;
@@ -641,53 +603,61 @@ size_t PCSX::GPULogger::saveFrameLogSplit(const std::filesystem::path& path, siz
         std::ofstream output(partPath);
         if (!output.is_open()) return 0;
 
-        writeFrameLog(output, header, {}, totalStats);
+        writeFrameLog(output, m_frameCounter, m_gteFrameLog, {}, totalStats);
 
         return output.good() ? 1 : 0;
     }
 
     std::vector<std::string> partCommands;
     PCSX::GPU::GPUStats partStats;
-    size_t commandsSize = 0;
     size_t commandIndex = 0;
     size_t partIndex = 1;
     size_t writtenParts = 0;
 
     while (commandIndex < serialized.size()) {
         const auto& nextCommand = serialized[commandIndex];
-        const auto separatorSize = partCommands.empty() ? 0 : 2;  // ",\n"
 
-        const size_t candidateCommandsSize = commandsSize + separatorSize + nextCommand.json.size();
+        auto candidateCommands = partCommands;
+        candidateCommands.push_back(nextCommand.json);
         auto candidateStats = partStats;
         accumulateStats(candidateStats, nextCommand.stats);
 
-        const auto candidateSize = estimateFrameLogSize(header, candidateCommandsSize, candidateStats);
+        std::ostringstream sizeProbe;
+        writeFrameLog(sizeProbe, m_frameCounter, m_gteFrameLog, candidateCommands, candidateStats);
+        auto serializedSize = static_cast<std::size_t>(sizeProbe.tellp());
 
-        if (!partCommands.empty() && candidateSize > maxBytes) {
-            std::ostringstream suffix;
-            suffix << '_' << std::setfill('0') << std::setw(2) << partIndex++;
-            auto partPath = basePath.parent_path() / (basePath.stem().string() + suffix.str() + basePath.extension().string());
+        if (!partCommands.empty() && serializedSize > maxBytes) {
+            // Finish the current part before adding the command that exceeds the limit.
+        } else {
+            partCommands = std::move(candidateCommands);
+            partStats = candidateStats;
+            ++commandIndex;
 
-            std::ofstream output(partPath);
-            if (!output.is_open()) return 0;
-
-            writeFrameLog(output, header, partCommands, partStats);
-            if (!output.good()) return 0;
-
-            ++writtenParts;
-
-            partCommands.clear();
-            partStats = {};
-            commandsSize = 0;
-
-            // Retry the current command on the next iteration with an empty buffer.
-            continue;
+            if (serializedSize <= maxBytes || partCommands.size() == 1) {
+                continue;
+            }
         }
 
-        partCommands.push_back(nextCommand.json);
-        partStats = candidateStats;
-        commandsSize = candidateCommandsSize;
-        ++commandIndex;
+        if (partCommands.empty()) {
+            partCommands.push_back(nextCommand.json);
+            partStats = nextCommand.stats;
+            ++commandIndex;
+        }
+
+        std::ostringstream suffix;
+        suffix << '_' << std::setfill('0') << std::setw(2) << partIndex++;
+        auto partPath = basePath.parent_path() / (basePath.stem().string() + suffix.str() + basePath.extension().string());
+
+        std::ofstream output(partPath);
+        if (!output.is_open()) return 0;
+
+        writeFrameLog(output, m_frameCounter, m_gteFrameLog, partCommands, partStats);
+        if (!output.good()) return 0;
+
+        ++writtenParts;
+
+        partCommands.clear();
+        partStats = {};
     }
 
     if (!partCommands.empty()) {
@@ -698,7 +668,7 @@ size_t PCSX::GPULogger::saveFrameLogSplit(const std::filesystem::path& path, siz
         std::ofstream output(partPath);
         if (!output.is_open()) return 0;
 
-        writeFrameLog(output, header, partCommands, partStats);
+        writeFrameLog(output, m_frameCounter, m_gteFrameLog, partCommands, partStats);
         if (!output.good()) return 0;
 
         ++writtenParts;
