@@ -21,7 +21,9 @@
 
 #include "core/gpu.h"
 
+#include <iomanip>
 #include <magic_enum_all.hpp>
+#include <sstream>
 
 #include "core/debug.h"
 #include "core/gpulogger.h"
@@ -1150,8 +1152,238 @@ void PCSX::GPU::Logged::drawColorBox(uint32_t color, unsigned itemIndex, unsigne
     }
 }
 
+namespace {
+
+std::string colorToHex(uint32_t color) {
+    std::ostringstream stream;
+    stream << "0x" << std::hex << std::setw(6) << std::setfill('0') << (color & 0xffffff);
+    return stream.str();
+}
+
+const char *texDepthToString(PCSX::GPU::TexDepth depth) {
+    switch (depth) {
+        case PCSX::GPU::TexDepth::Tex4Bits:
+            return "4bpp";
+        case PCSX::GPU::TexDepth::Tex8Bits:
+            return "8bpp";
+        case PCSX::GPU::TexDepth::Tex16Bits:
+            return "16bpp";
+    }
+    return "unknown";
+}
+
+const char *blendFunctionToString(PCSX::GPU::BlendFunction function) {
+    switch (function) {
+        case PCSX::GPU::BlendFunction::HalfBackAndHalfFront:
+            return "50% back + 50% front";
+        case PCSX::GPU::BlendFunction::FullBackAndFullFront:
+            return "100% back + 100% front";
+        case PCSX::GPU::BlendFunction::FullBackSubFullFront:
+            return "100% back - 100% front";
+        case PCSX::GPU::BlendFunction::FullBackAndQuarterFront:
+            return "100% back + 25% front";
+    }
+    return "unknown";
+}
+
+template <PCSX::GPU::Shading shading>
+constexpr const char *shadingString() {
+    if constexpr (shading == PCSX::GPU::Shading::Flat) {
+        return "flat";
+    } else {
+        return "gouraud";
+    }
+}
+
+template <PCSX::GPU::Shape shape>
+constexpr const char *shapeString() {
+    if constexpr (shape == PCSX::GPU::Shape::Tri) {
+        return "triangle";
+    } else {
+        return "quad";
+    }
+}
+
+template <PCSX::GPU::Textured textured>
+constexpr const char *texturedString() {
+    if constexpr (textured == PCSX::GPU::Textured::Yes) {
+        return "true";
+    } else {
+        return "false";
+    }
+}
+
+template <PCSX::GPU::Blend blend>
+constexpr const char *blendString() {
+    if constexpr (blend == PCSX::GPU::Blend::Semi) {
+        return "semi";
+    } else {
+        return "off";
+    }
+}
+
+template <PCSX::GPU::Modulation modulation>
+constexpr const char *modulationString() {
+    if constexpr (modulation == PCSX::GPU::Modulation::On) {
+        return "on";
+    } else {
+        return "off";
+    }
+}
+
+template <PCSX::GPU::LineType lineType>
+constexpr const char *lineTypeString() {
+    if constexpr (lineType == PCSX::GPU::LineType::Simple) {
+        return "simple";
+    } else {
+        return "polyline";
+    }
+}
+
+template <PCSX::GPU::Size size>
+constexpr const char *sizeString() {
+    if constexpr (size == PCSX::GPU::Size::Variable) {
+        return "variable";
+    } else if constexpr (size == PCSX::GPU::Size::S1) {
+        return "1x1";
+    } else if constexpr (size == PCSX::GPU::Size::S8) {
+        return "8x8";
+    } else {
+        return "16x16";
+    }
+}
+
+const char *boolString(bool value) { return value ? "true" : "false"; }
+
+}  // namespace
+
 template <PCSX::GPU::Shading shading, PCSX::GPU::Shape shape, PCSX::GPU::Textured textured, PCSX::GPU::Blend blend,
           PCSX::GPU::Modulation modulation>
+bool PCSX::GPU::Poly<shading, shape, textured, blend, modulation>::writeJsonFields(std::ostream &output) const {
+    output << ",\n";
+    output << "      \"details\": {\n";
+    output << "        \"primitive\": \"polygon\",\n";
+    output << "        \"shape\": \"" << shapeString<shape>() << "\",\n";
+    output << "        \"shading\": \"" << shadingString<shading>() << "\",\n";
+    output << "        \"textured\": " << texturedString<textured>() << ",\n";
+    output << "        \"blend\": \"" << blendString<blend>() << "\",\n";
+    output << "        \"modulation\": \"" << modulationString<modulation>() << "\",\n";
+    output << "        \"offset\": {\"x\": " << offset.x << ", \"y\": " << offset.y << "}";
+    if constexpr (textured == Textured::Yes) {
+        output << ",\n";
+        output << "        \"texture\": {\n";
+        output << "          \"tpageX\": " << tpage.tx << ",\n";
+        output << "          \"tpageY\": " << tpage.ty << ",\n";
+        output << "          \"raw\": " << tpage.raw << ",\n";
+        output << "          \"depth\": \"" << texDepthToString(tpage.texDepth) << "\",\n";
+        output << "          \"blendFunction\": \"" << blendFunctionToString(tpage.blendFunction) << "\",\n";
+        output << "          \"dither\": " << boolString(tpage.dither) << ",\n";
+        output << "          \"drawToDisplay\": " << boolString(tpage.drawToDisplay) << ",\n";
+        output << "          \"textureDisable\": " << boolString(tpage.texDisable) << ",\n";
+        output << "          \"xflip\": " << boolString(tpage.xflip) << ",\n";
+        output << "          \"yflip\": " << boolString(tpage.yflip) << ",\n";
+        output << "          \"clut\": {\"x\": " << clutX() << ", \"y\": " << clutY() << ", \"raw\": " << clutraw
+               << "}\n";
+        output << "        }";
+    }
+    output << ",\n";
+    output << "        \"vertices\": [\n";
+    for (unsigned i = 0; i < count; i++) {
+        unsigned txPage = 0;
+        unsigned tyPage = 0;
+        unsigned shift = 0;
+        if constexpr (textured == Textured::Yes) {
+            txPage = tpage.tx * 64;
+            tyPage = tpage.ty * 256;
+            shift = tpage.texDepth == TexDepth::Tex4Bits ? 2 : tpage.texDepth == TexDepth::Tex8Bits ? 1 : 0;
+        }
+        output << "          {\"x\": " << x[i] << ", \"y\": " << y[i] << ", \"screenX\": " << x[i] + offset.x
+               << ", \"screenY\": " << y[i] + offset.y;
+        if constexpr ((shading == Shading::Flat && ((textured == Textured::No) || (modulation == Modulation::On))) ||
+                      (shading == Shading::Gouraud)) {
+            output << ", \"color\": \"" << colorToHex(colors[i]) << "\"";
+        }
+        if constexpr (textured == Textured::Yes) {
+            output << ", \"u\": " << u[i] << ", \"v\": " << v[i] << ", \"texU\": " << (u[i] >> shift) + txPage
+                   << ", \"texV\": " << v[i] + tyPage << ", \"shift\": " << shift;
+        }
+        output << "}" << (i + 1 < count ? "," : "") << "\n";
+    }
+    output << "        ]\n";
+    output << "      }";
+    return true;
+}
+
+template <PCSX::GPU::Shading shading, PCSX::GPU::LineType lineType, PCSX::GPU::Blend blend>
+bool PCSX::GPU::Line<shading, lineType, blend>::writeJsonFields(std::ostream &output) const {
+    output << ",\n";
+    output << "      \"details\": {\n";
+    output << "        \"primitive\": \"line\",\n";
+    output << "        \"lineType\": \"" << lineTypeString<lineType>() << "\",\n";
+    output << "        \"shading\": \"" << shadingString<shading>() << "\",\n";
+    output << "        \"blend\": \"" << blendString<blend>() << "\",\n";
+    output << "        \"offset\": {\"x\": " << offset.x << ", \"y\": " << offset.y << "},\n";
+    output << "        \"points\": [\n";
+    for (size_t i = 0; i < x.size(); ++i) {
+        output << "          {\"x\": " << x[i] << ", \"y\": " << y[i] << ", \"screenX\": " << x[i] + offset.x
+               << ", \"screenY\": " << y[i] + offset.y;
+        if constexpr (shading == Shading::Gouraud) {
+            output << ", \"color\": \"" << colorToHex(colors[i]) << "\"";
+        } else if constexpr (shading == Shading::Flat && i == 0) {
+            output << ", \"color\": \"" << colorToHex(colors[0]) << "\"";
+        }
+        output << "}" << (i + 1 < x.size() ? "," : "") << "\n";
+    }
+    output << "        ]\n";
+    output << "      }";
+    return true;
+}
+
+template <PCSX::GPU::Size size, PCSX::GPU::Textured textured, PCSX::GPU::Blend blend, PCSX::GPU::Modulation modulation>
+bool PCSX::GPU::Rect<size, textured, blend, modulation>::writeJsonFields(std::ostream &output) const {
+    output << ",\n";
+    output << "      \"details\": {\n";
+    output << "        \"primitive\": \"rectangle\",\n";
+    output << "        \"size\": \"" << sizeString<size>() << "\",\n";
+    output << "        \"blend\": \"" << blendString<blend>() << "\",\n";
+    output << "        \"modulation\": \"" << modulationString<modulation>() << "\",\n";
+    output << "        \"offset\": {\"x\": " << offset.x << ", \"y\": " << offset.y << "},\n";
+    output << "        \"rect\": {\"x\": " << x << ", \"y\": " << y << ", \"w\": " << w << ", \"h\": " << h
+           << "}";
+    if constexpr ((textured == Textured::No) || (modulation == Modulation::On)) {
+        output << ",\n";
+        output << "        \"color\": \"" << colorToHex(color) << "\"";
+    }
+    if constexpr (textured == Textured::Yes) {
+        unsigned txPage = tpage.tx * 64;
+        unsigned tyPage = tpage.ty * 256;
+        unsigned shift = tpage.texDepth == TexDepth::Tex4Bits ? 2 : tpage.texDepth == TexDepth::Tex8Bits ? 1 : 0;
+        output << ",\n";
+        output << "        \"texture\": {\n";
+        output << "          \"u\": " << u << ",\n";
+        output << "          \"v\": " << v << ",\n";
+        output << "          \"texU\": " << (u >> shift) + txPage << ",\n";
+        output << "          \"texV\": " << v + tyPage << ",\n";
+        output << "          \"shift\": " << shift << ",\n";
+        output << "          \"tpageX\": " << tpage.tx << ",\n";
+        output << "          \"tpageY\": " << tpage.ty << ",\n";
+        output << "          \"raw\": " << tpage.raw << ",\n";
+        output << "          \"depth\": \"" << texDepthToString(tpage.texDepth) << "\",\n";
+        output << "          \"blendFunction\": \"" << blendFunctionToString(tpage.blendFunction) << "\",\n";
+        output << "          \"dither\": " << boolString(tpage.dither) << ",\n";
+        output << "          \"drawToDisplay\": " << boolString(tpage.drawToDisplay) << ",\n";
+        output << "          \"textureDisable\": " << boolString(tpage.texDisable) << ",\n";
+        output << "          \"xflip\": " << boolString(tpage.xflip) << ",\n";
+        output << "          \"yflip\": " << boolString(tpage.yflip) << ",\n";
+        output << "          \"clut\": {\"x\": " << clutX() << ", \"y\": " << clutY() << ", \"raw\": " << clutraw
+               << "}\n";
+        output << "        }";
+    }
+    output << "\n";
+    output << "      }";
+    return true;
+}
+
 void PCSX::GPU::Poly<shading, shape, textured, blend, modulation>::drawLogNode(unsigned itemIndex,
                                                                                const DrawLogSettings &settings) {
     if constexpr ((textured == Textured::No) || (modulation == Modulation::On)) {
