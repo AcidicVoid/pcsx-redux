@@ -198,11 +198,11 @@ void PCSX::Widgets::GPULogger::draw(PCSX::GPULogger* logger, const char* title) 
         }
         if (m_showOrigins) {
             if ((logged.origin != GPU::Logged::Origin::REPLAY) &&
-                ((origin != logged.origin) || (value != logged.value) || (length != logged.length))) {
+                ((origin != logged.origin) || (value != logged.sourceAddr) || (length != logged.length))) {
                 ImGui::Separator();
                 std::string label;
                 origin = logged.origin;
-                value = logged.value;
+                value = logged.sourceAddr;
                 length = logged.length;
                 switch (origin) {
                     case GPU::Logged::Origin::DATAWRITE:

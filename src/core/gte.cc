@@ -272,8 +272,8 @@ static void logGteInputs() {
     if (!PCSX::g_emulator->m_gpuLogger) return;
     PCSX::GTEState state{};
     state.vx0 = {VX0, VY0, VZ0};
-    state.vx1 = {VX1, VY1, VZ1};
-    state.vx2 = {VX2, VY2, VZ2};
+    state.vx1 = {static_cast<short>(VX1), static_cast<short>(VY1), static_cast<short>(VZ1)};
+    state.vx2 = {static_cast<short>(VX2), static_cast<short>(VY2), static_cast<short>(VZ2)};
     state.rotationMatrix = {R11, R12, R13};
     state.rotationMatrixRow2 = {R21, R22, R23};
     state.rotationMatrixRow3 = {R31, R32, R33};
