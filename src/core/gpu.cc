@@ -43,7 +43,7 @@ namespace PCSX {
 // clang-format doesn't understand duff's device pattern...
 template <GPU::Shading shading, GPU::Shape shape, GPU::Textured textured, GPU::Blend blend, GPU::Modulation modulation>
 void GPU::Poly<shading, shape, textured, blend, modulation>::processWrite(Buffer & buf, Logged::Origin origin, uint32_t origvalue, uint32_t length) {
-    if (words.empty()) {
+    if ((m_state == READ_COLOR) && (m_count == 0) && !words.empty()) {
         words.clear();
     }
     uint32_t value = buf.get();
@@ -105,11 +105,12 @@ void GPU::Poly<shading, shape, textured, blend, modulation>::processWrite(Buffer
     m_gpu->m_defaultProcessor.setActive();
     g_emulator->m_gpuLogger->addNode(*this, origin, origvalue, length);
     m_gpu->write0(this);
+    words.clear();
 }
 
 template <GPU::Shading shading, GPU::LineType lineType, GPU::Blend blend>
 void GPU::Line<shading, lineType, blend>::processWrite(Buffer & buf, Logged::Origin origin, uint32_t origvalue, uint32_t length) {
-    if (words.empty()) {
+    if ((m_state == READ_COLOR) && !m_count && !words.empty()) {
         words.clear();
     }
     uint32_t value = buf.get();
@@ -172,6 +173,7 @@ void GPU::Line<shading, lineType, blend>::processWrite(Buffer & buf, Logged::Ori
     if ((colors.size() >= 2) && ((colors.size() == x.size()))) {
         g_emulator->m_gpuLogger->addNode(*this, origin, origvalue, length);
         m_gpu->write0(this);
+        words.clear();
     } else {
         g_system->log(LogClass::GPU, "Got an invalid line command...\n");
     }
@@ -184,7 +186,7 @@ void GPU::Line<shading, lineType, blend>::processWrite(Buffer & buf, Logged::Ori
 
 template <GPU::Size size, GPU::Textured textured, GPU::Blend blend, GPU::Modulation modulation>
 void GPU::Rect<size, textured, blend, modulation>::processWrite(Buffer & buf, Logged::Origin origin, uint32_t origvalue, uint32_t length) {
-    if (words.empty()) {
+    if ((m_state == READ_COLOR) && !words.empty()) {
         words.clear();
     }
     uint32_t value = buf.get();
@@ -246,6 +248,7 @@ void GPU::Rect<size, textured, blend, modulation>::processWrite(Buffer & buf, Lo
     m_gpu->m_defaultProcessor.setActive();
     g_emulator->m_gpuLogger->addNode(*this, origin, origvalue, length);
     m_gpu->write0(this);
+    words.clear();
 }
 // clang-format on
 
@@ -895,7 +898,7 @@ void PCSX::GPU::Command::processWrite(Buffer &buf, Logged::Origin origin, uint32
 }
 
 void PCSX::GPU::FastFill::processWrite(Buffer &buf, Logged::Origin origin, uint32_t origvalue, uint32_t length) {
-    if (words.empty()) {
+    if ((m_state == READ_COLOR) && !words.empty()) {
         words.clear();
     }
     uint32_t value = buf.get();
@@ -928,12 +931,13 @@ void PCSX::GPU::FastFill::processWrite(Buffer &buf, Logged::Origin origin, uint3
             m_gpu->m_defaultProcessor.setActive();
             g_emulator->m_gpuLogger->addNode(*this, origin, origvalue, length);
             m_gpu->write0(this);
+            words.clear();
             return;
     }
 }
 
 void PCSX::GPU::BlitVramVram::processWrite(Buffer &buf, Logged::Origin origin, uint32_t origvalue, uint32_t length) {
-    if (words.empty()) {
+    if ((m_state == READ_COMMAND) && !words.empty()) {
         words.clear();
     }
     uint32_t value;
@@ -975,12 +979,13 @@ void PCSX::GPU::BlitVramVram::processWrite(Buffer &buf, Logged::Origin origin, u
             m_gpu->m_defaultProcessor.setActive();
             g_emulator->m_gpuLogger->addNode(*this, origin, origvalue, length);
             m_gpu->write0(this);
+            words.clear();
             return;
     }
 }
 
 void PCSX::GPU::BlitRamVram::processWrite(Buffer &buf, Logged::Origin origin, uint32_t origvalue, uint32_t length) {
-    if (words.empty()) {
+    if ((m_state == READ_COMMAND) && !words.empty()) {
         words.clear();
     }
     uint32_t value;
@@ -1039,13 +1044,14 @@ void PCSX::GPU::BlitRamVram::processWrite(Buffer &buf, Logged::Origin origin, ui
         m_gpu->m_defaultProcessor.setActive();
         g_emulator->m_gpuLogger->addNode(*this, origin, origvalue, length);
         m_gpu->partialUpdateVRAM(x, y, w, h, data.data<uint16_t>(), PartialUpdateVram::Synchronous);
+        words.clear();
     }
 }
 
 void PCSX::GPU::BlitRamVram::execute(GPU *gpu) { gpu->partialUpdateVRAM(x, y, w, h, data.data<uint16_t>()); }
 
 void PCSX::GPU::BlitVramRam::processWrite(Buffer &buf, Logged::Origin origin, uint32_t origvalue, uint32_t length) {
-    if (words.empty()) {
+    if ((m_state == READ_COMMAND) && !words.empty()) {
         words.clear();
     }
     uint32_t value;
@@ -1082,6 +1088,7 @@ void PCSX::GPU::BlitVramRam::processWrite(Buffer &buf, Logged::Origin origin, ui
                 slice.borrow(m_gpu->m_vramReadSlice, (l * 1024 + x) * 2, w * 2);
                 m_gpu->m_readFifo->pushSlice(std::move(slice));
             }
+            words.clear();
             return;
     }
 }
