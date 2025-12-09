@@ -130,3 +130,4 @@ luacov.stats.out
 /AppDir
 /*.AppImage
 /*.AppImage.zsync
+/vsprojects/mainthunk/gpulogger_frame.json
