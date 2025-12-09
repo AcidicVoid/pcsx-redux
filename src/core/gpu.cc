@@ -110,8 +110,14 @@ void GPU::Poly<shading, shape, textured, blend, modulation>::processWrite(Buffer
 
 template <GPU::Shading shading, GPU::LineType lineType, GPU::Blend blend>
 void GPU::Line<shading, lineType, blend>::processWrite(Buffer & buf, Logged::Origin origin, uint32_t origvalue, uint32_t length) {
-    if ((m_state == READ_COLOR) && !m_count && !words.empty()) {
-        words.clear();
+    if ((m_state == READ_COLOR) && !words.empty()) {
+        if constexpr (lineType == LineType::Simple) {
+            if (!m_count) {
+                words.clear();
+            }
+        } else {
+            words.clear();
+        }
     }
     uint32_t value = buf.get();
     words.push_back(value);
