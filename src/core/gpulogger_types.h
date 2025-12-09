@@ -75,4 +75,35 @@ struct GTEState {
     GTELogMetadata metadata;
 };
 
+struct LogEntry {
+    uint32_t frame = 0;
+    uint32_t pc = 0;
+
+    uint32_t gp0_cmd = 0;
+    uint16_t primitive_type = 0;
+    uint16_t vertex_count = 0;
+
+    uint32_t packet_words[12] = {};
+
+    int16_t vx[4] = {};
+    int16_t vy[4] = {};
+    int16_t vz[4] = {};
+
+    int16_t sx[4] = {};
+    int16_t sy[4] = {};
+
+    int16_t rot[3][3] = {};
+    int32_t trx = 0, try_ = 0, trz = 0;
+
+    int32_t ofx = 0, ofy = 0;
+    int16_t h = 0;
+    int16_t dqa = 0, dqb = 0;
+    int16_t zsf3 = 0, zsf4 = 0;
+
+    uint16_t clut = 0;
+    uint16_t tpage = 0;
+    uint8_t u[4] = {};
+    uint8_t v[4] = {};
+};
+
 }  // namespace PCSX
