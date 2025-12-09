@@ -237,7 +237,7 @@ void PCSX::GPULogger::addNodeInternal(GPU::Logged* node, GPU::Logged::Origin ori
     g_emulator->m_gpu->setOpenGLContext();
 }
 
-bool PCSX::GPULogger::saveFrameLog(const std::filesystem::path& path) const {
+bool PCSX::GPULogger::saveFrameLog(const std::filesystem::path& path) {
     std::ofstream output(path);
     if (!output.is_open()) return false;
 

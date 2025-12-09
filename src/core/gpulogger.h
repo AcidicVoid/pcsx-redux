@@ -45,7 +45,7 @@ class GPULogger {
             addNodeInternal(new T(data), origin, value, length);
         }
     }
-    bool saveFrameLog(const std::filesystem::path& path) const;
+    bool saveFrameLog(const std::filesystem::path& path);
     void replay(GPU*);
     void highlight(GPU::Logged* node, bool only = false);
     void enable();
