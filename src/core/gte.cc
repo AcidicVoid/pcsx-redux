@@ -268,21 +268,19 @@
 #define CV2(n) (n < 3 ? PCSX::g_emulator->m_cpu->m_regs.CP2C.p[(n << 3) + 6].sd : 0)
 #define CV3(n) (n < 3 ? PCSX::g_emulator->m_cpu->m_regs.CP2C.p[(n << 3) + 7].sd : 0)
 
-static void logGteInputs() {
+static void logGteCommand(PCSX::GTEState::Command command) {
     if (!PCSX::g_emulator->m_gpuLogger) return;
     PCSX::GTEState state{};
-    state.vx0 = {VX0, VY0, VZ0};
-    state.vx1 = {static_cast<short>(VX1), static_cast<short>(VY1), static_cast<short>(VZ1)};
-    state.vx2 = {static_cast<short>(VX2), static_cast<short>(VY2), static_cast<short>(VZ2)};
-    state.rotationMatrix = {R11, R12, R13};
-    state.rotationMatrixRow2 = {R21, R22, R23};
-    state.rotationMatrixRow3 = {R31, R32, R33};
-    state.lightMatrix = {L11, L12, L13};
-    state.lightMatrixRow2 = {L21, L22, L23};
-    state.lightMatrixRow3 = {L31, L32, L33};
-    state.colorMatrix = {LR1, LR2, LR3};
-    state.colorMatrixRow2 = {LG1, LG2, LG3};
-    state.colorMatrixRow3 = {LB1, LB2, LB3};
+    state.command = command;
+    state.vertices = {{{VX0, VY0, VZ0},
+                       {static_cast<int16_t>(VX1), static_cast<int16_t>(VY1), static_cast<int16_t>(VZ1)},
+                       {static_cast<int16_t>(VX2), static_cast<int16_t>(VY2), static_cast<int16_t>(VZ2)}}};
+    state.screenCoords = {{{static_cast<int16_t>(SX0), static_cast<int16_t>(SY0)},
+                           {static_cast<int16_t>(SX1), static_cast<int16_t>(SY1)},
+                           {static_cast<int16_t>(SX2), static_cast<int16_t>(SY2)}}};
+    state.rotationMatrix = {{{R11, R12, R13}, {R21, R22, R23}, {R31, R32, R33}}};
+    state.lightMatrix = {{{L11, L12, L13}, {L21, L22, L23}, {L31, L32, L33}}};
+    state.colorMatrix = {{{LR1, LR2, LR3}, {LG1, LG2, LG3}, {LB1, LB2, LB3}}};
     state.translation = {TRX, TRY, TRZ};
     PCSX::g_emulator->m_gpuLogger->recordGteState(state);
 }
@@ -516,8 +514,6 @@ static int32_t Lm_H(int64_t value, int sf) {
 void PCSX::GTE::RTPS(uint32_t op) {
     GTE_LOG("%08x GTE: RTPS|", op);
 
-    logGteInputs();
-
     const int lm = GTE_LM(gteop(op));
     s_sf = GTE_SF(gteop(op));
     FLAG = 0;
@@ -546,6 +542,8 @@ void PCSX::GTE::RTPS(uint32_t op) {
 
     MAC0 = F((int64_t)DQB + ((int64_t)DQA * h_over_sz3));
     IR0 = Lm_H(s_mac0, 1);
+
+    logGteCommand(GTEState::Command::RTPS);
 }
 
 void PCSX::GTE::NCLIP(uint32_t op) {
@@ -556,6 +554,8 @@ void PCSX::GTE::NCLIP(uint32_t op) {
         MAC0 = F(PGXP_NCLIP());
     else
         MAC0 = F((int64_t)(SX0 * SY1) + (SX1 * SY2) + (SX2 * SY0) - (SX0 * SY2) - (SX1 * SY0) - (SX2 * SY1));
+
+    logGteCommand(GTEState::Command::NCLIP);
 }
 
 void PCSX::GTE::OP(uint32_t op) {
@@ -938,8 +938,6 @@ void PCSX::GTE::AVSZ4(uint32_t op) {
 void PCSX::GTE::RTPT(uint32_t op) {
     GTE_LOG("%08x GTE: RTPT|", op);
 
-    logGteInputs();
-
     int32_t h_over_sz3;
     const int lm = GTE_LM(gteop(op));
     s_sf = GTE_SF(gteop(op));
@@ -970,6 +968,8 @@ void PCSX::GTE::RTPT(uint32_t op) {
 
     MAC0 = F((int64_t)DQB + ((int64_t)DQA * h_over_sz3));
     IR0 = Lm_H(s_mac0, 1);
+
+    logGteCommand(GTEState::Command::RTPT);
 }
 
 void PCSX::GTE::GPL(uint32_t op) {

@@ -1252,6 +1252,26 @@ std::string colorToHex(uint32_t color) {
     return stream.str();
 }
 
+void writePrimitiveGteJson(std::ostream &output, const std::optional<PCSX::GTEState> &gteState) {
+    if (!gteState) return;
+
+    const auto &gte = *gteState;
+    output << ",\n";
+    output << "        \"sourceVertices3D\": [[" << gte.vertices[0][0] << ", " << gte.vertices[0][1] << ", "
+           << gte.vertices[0][2] << "], [" << gte.vertices[1][0] << ", " << gte.vertices[1][1] << ", "
+           << gte.vertices[1][2] << "], [" << gte.vertices[2][0] << ", " << gte.vertices[2][1] << ", "
+           << gte.vertices[2][2] << "]],\n";
+    output << "        \"objectMatrix\": [[" << gte.rotationMatrix[0][0] << ", " << gte.rotationMatrix[0][1]
+           << ", " << gte.rotationMatrix[0][2] << "], [" << gte.rotationMatrix[1][0] << ", "
+           << gte.rotationMatrix[1][1] << ", " << gte.rotationMatrix[1][2] << "], [" << gte.rotationMatrix[2][0]
+           << ", " << gte.rotationMatrix[2][1] << ", " << gte.rotationMatrix[2][2] << "]],\n";
+    output << "        \"localMatrix\": [[" << gte.rotationMatrix[0][0] << ", " << gte.rotationMatrix[0][1] << ", "
+           << gte.rotationMatrix[0][2] << ", " << gte.translation[0] << "], [" << gte.rotationMatrix[1][0] << ", "
+           << gte.rotationMatrix[1][1] << ", " << gte.rotationMatrix[1][2] << ", " << gte.translation[1] << "], ["
+           << gte.rotationMatrix[2][0] << ", " << gte.rotationMatrix[2][1] << ", " << gte.rotationMatrix[2][2]
+           << ", " << gte.translation[2] << "]]";
+}
+
 template <PCSX::GPU::Shading shading>
 constexpr const char *shadingString() {
     if constexpr (shading == PCSX::GPU::Shading::Flat) {
@@ -1403,7 +1423,9 @@ bool PCSX::GPU::Poly<shading, shape, textured, blend, modulation>::writeJsonFiel
         }
         output << "}" << (i + 1 < count ? "," : "") << "\n";
     }
-    output << "        ]\n";
+    output << "        ]";
+    writePrimitiveGteJson(output, gteState);
+    output << "\n";
     output << "      }";
     return true;
 }
@@ -1430,7 +1452,9 @@ bool PCSX::GPU::Line<shading, lineType, blend>::writeJsonFields(std::ostream &ou
         }
         output << "}" << (i + 1 < x.size() ? "," : "") << "\n";
     }
-    output << "        ]\n";
+    output << "        ]";
+    writePrimitiveGteJson(output, gteState);
+    output << "\n";
     output << "      }";
     return true;
 }
@@ -1476,6 +1500,7 @@ bool PCSX::GPU::Rect<size, textured, blend, modulation>::writeJsonFields(std::os
         output << "        }";
     }
     output << "\n";
+    writePrimitiveGteJson(output, gteState);
     output << "      }";
     return true;
 }
