@@ -320,6 +320,139 @@ void writeGteSnapshotJson(std::ostream& output, std::string_view name, const PCS
 
 }  // namespace
 
+namespace {
+
+struct SerializedCommand {
+    std::string json;
+    PCSX::GPU::GPUStats stats;
+};
+
+void accumulateStats(PCSX::GPU::GPUStats& target, const PCSX::GPU::GPUStats& delta) { target += delta; }
+
+std::string serializeCommand(const PCSX::GPU::Logged& logged) {
+    std::ostringstream output;
+
+    output << "    {\n";
+
+    std::ostringstream pcStream;
+    pcStream << std::hex << std::setw(8) << std::setfill('0') << logged.pc;
+
+    std::string name = std::string(logged.getName());
+
+    output << "      \"name\": \"" << escapeJsonString(name) << "\",\n";
+    output << "      \"origin\": \"" << escapeJsonString(originToString(logged.origin)) << "\",\n";
+    output << "      \"frame\": " << logged.frame << ",\n";
+    output << "      \"pc\": \"0x" << pcStream.str() << "\",\n";
+    output << "      \"source\": {\"address\": " << logged.sourceAddr << ", \"length\": " << logged.length
+           << "},\n";
+    output << "      \"words\": [";
+    for (size_t i = 0; i < logged.words.size(); ++i) {
+        output << logged.words[i];
+        if (i + 1 < logged.words.size()) output << ", ";
+    }
+    output << "],\n";
+    output << "      \"wordsTruncated\": " << (logged.wordsTruncated ? "true" : "false") << ",\n";
+    output << "      \"enabled\": " << (logged.enabled ? "true" : "false") << ",\n";
+    output << "      \"highlight\": " << (logged.highlight ? "true" : "false");
+    if (logged.gteState) {
+        const auto& gte = *logged.gteState;
+        std::ostringstream gtePc;
+        gtePc << std::hex << std::setw(8) << std::setfill('0') << gte.pc;
+        output << ",\n";
+        output << "      \"gte\": {\n";
+        output << "        \"command\": \"" << escapeJsonString(gteCommandToString(gte.command)) << "\",\n";
+        output << "        \"pc\": \"0x" << gtePc.str() << "\",\n";
+        writeGteSnapshotJson(output, "input", gte.input, "        ");
+        output << ",\n";
+        writeGteSnapshotJson(output, "output", gte.output, "        ");
+        if (!gte.metadata.vertexFetches.empty()) {
+            output << ",\n";
+            writeGteMetadataJson(output, gte.metadata, "        ");
+        }
+        output << "\n      }";
+    }
+    std::ostringstream extraFieldsStream;
+    bool hasExtraFields = logged.writeJsonFields(extraFieldsStream);
+    std::string extraFields = extraFieldsStream.str();
+
+    bool isDebugPlaceholder = (extraFields.find("...") != std::string::npos);
+
+    if (hasExtraFields && !extraFields.empty() && !isDebugPlaceholder) {
+        output << extraFields;
+    }
+    output << "\n";
+    output << "    }";
+
+    return output.str();
+}
+
+std::vector<SerializedCommand> serializeCommands(const PCSX::GPU::LoggedList& list, PCSX::GPU::GPUStats& totalStats) {
+    std::vector<SerializedCommand> serialized;
+    serialized.reserve(list.size());
+
+    for (auto& logged : list) {
+        SerializedCommand entry;
+        entry.json = serializeCommand(logged);
+        logged.cumulateStats(&entry.stats);
+        logged.cumulateStats(&totalStats);
+        serialized.push_back(std::move(entry));
+    }
+
+    return serialized;
+}
+
+void writeFrameLog(std::ostream& output, uint64_t frameCounter, const std::vector<PCSX::GTEState>& gteFrameLog,
+                   const std::vector<std::string>& commands, const PCSX::GPU::GPUStats& stats) {
+    output << "{\n";
+    output << "  \"frame\": " << frameCounter << ",\n";
+    output << "  \"gte\": [\n";
+
+    bool firstGte = true;
+    for (const auto& state : gteFrameLog) {
+        if (!firstGte) output << ",\n";
+        firstGte = false;
+
+        std::ostringstream pcStream;
+        pcStream << std::hex << std::setw(8) << std::setfill('0') << state.pc;
+
+        output << "    {\n";
+        output << "      \"command\": \"" << escapeJsonString(gteCommandToString(state.command)) << "\",\n";
+        output << "      \"pc\": \"0x" << pcStream.str() << "\",\n";
+        writeGteSnapshotJson(output, "input", state.input, "      ");
+        output << ",\n";
+        writeGteSnapshotJson(output, "output", state.output, "      ");
+        if (!state.metadata.vertexFetches.empty()) {
+            output << ",\n";
+            writeGteMetadataJson(output, state.metadata, "      ");
+        }
+        output << "\n    }";
+    }
+
+    output << "\n  ],\n";
+    output << "  \"commands\": [\n";
+
+    bool first = true;
+    for (const auto& command : commands) {
+        if (!first) output << ",\n";
+        first = false;
+        output << command;
+    }
+
+    output << "\n  ],\n";
+    output << "  \"stats\": {\n";
+    output << "    \"triangles\": " << stats.triangles << ",\n";
+    output << "    \"texturedTriangles\": " << stats.texturedTriangles << ",\n";
+    output << "    \"rectangles\": " << stats.rectangles << ",\n";
+    output << "    \"sprites\": " << stats.sprites << ",\n";
+    output << "    \"pixelWrites\": " << stats.pixelWrites << ",\n";
+    output << "    \"pixelReads\": " << stats.pixelReads << ",\n";
+    output << "    \"texelReads\": " << stats.texelReads << "\n";
+    output << "  }\n";
+    output << "}\n";
+}
+
+}  // namespace
+
 void PCSX::GPULogger::enable() {
     GLint textureUnits;
     glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &textureUnits);
@@ -436,110 +569,112 @@ void PCSX::GPULogger::addNodeInternal(GPU::Logged* node, GPU::Logged::Origin ori
 }
 
 bool PCSX::GPULogger::saveFrameLog(const std::filesystem::path& path) {
+    GPU::GPUStats stats;
+    auto serialized = serializeCommands(m_list, stats);
+
+    std::vector<std::string> commands;
+    commands.reserve(serialized.size());
+    for (auto& command : serialized) {
+        commands.push_back(std::move(command.json));
+    }
+
     std::ofstream output(path);
     if (!output.is_open()) return false;
 
-    output << "{\n";
-    output << "  \"frame\": " << m_frameCounter << ",\n";
-    output << "  \"gte\": [\n";
-
-    bool firstGte = true;
-    for (const auto& state : m_gteFrameLog) {
-        if (!firstGte) output << ",\n";
-        firstGte = false;
-
-        std::ostringstream pcStream;
-        pcStream << std::hex << std::setw(8) << std::setfill('0') << state.pc;
-
-        output << "    {\n";
-        output << "      \"command\": \"" << escapeJsonString(gteCommandToString(state.command)) << "\",\n";
-        output << "      \"pc\": \"0x" << pcStream.str() << "\",\n";
-        writeGteSnapshotJson(output, "input", state.input, "      ");
-        output << ",\n";
-        writeGteSnapshotJson(output, "output", state.output, "      ");
-        if (!state.metadata.vertexFetches.empty()) {
-            output << ",\n";
-            writeGteMetadataJson(output, state.metadata, "      ");
-        }
-        output << "\n    }";
-    }
-
-    output << "\n  ],\n";
-    output << "  \"commands\": [\n";
-
-    GPU::GPUStats stats;
-    bool first = true;
-    for (auto& logged : m_list) {
-        logged.cumulateStats(&stats);
-        if (!first) output << ",\n";
-        first = false;
-
-        std::ostringstream pcStream;
-        pcStream << std::hex << std::setw(8) << std::setfill('0') << logged.pc;
-
-        std::string name = std::string(logged.getName());
-
-        output << "    {\n";
-        output << "      \"name\": \"" << escapeJsonString(name) << "\",\n";
-        output << "      \"origin\": \"" << escapeJsonString(originToString(logged.origin)) << "\",\n";
-        output << "      \"frame\": " << logged.frame << ",\n";
-        output << "      \"pc\": \"0x" << pcStream.str() << "\",\n";
-        output << "      \"source\": {\"address\": " << logged.sourceAddr << ", \"length\": " << logged.length
-               << "},\n";
-        output << "      \"words\": [";
-        for (size_t i = 0; i < logged.words.size(); ++i) {
-            output << logged.words[i];
-            if (i + 1 < logged.words.size()) output << ", ";
-        }
-        output << "],\n";
-        output << "      \"wordsTruncated\": " << (logged.wordsTruncated ? "true" : "false") << ",\n";
-        output << "      \"enabled\": " << (logged.enabled ? "true" : "false") << ",\n";
-        output << "      \"highlight\": " << (logged.highlight ? "true" : "false");
-        if (logged.gteState) {
-            const auto& gte = *logged.gteState;
-            std::ostringstream gtePc;
-            gtePc << std::hex << std::setw(8) << std::setfill('0') << gte.pc;
-            output << ",\n";
-            output << "      \"gte\": {\n";
-            output << "        \"command\": \"" << escapeJsonString(gteCommandToString(gte.command)) << "\",\n";
-            output << "        \"pc\": \"0x" << gtePc.str() << "\",\n";
-            writeGteSnapshotJson(output, "input", gte.input, "        ");
-            output << ",\n";
-            writeGteSnapshotJson(output, "output", gte.output, "        ");
-            if (!gte.metadata.vertexFetches.empty()) {
-                output << ",\n";
-                writeGteMetadataJson(output, gte.metadata, "        ");
-            }
-            output << "\n      }";
-        }
-        std::ostringstream extraFieldsStream;
-        logged.writeJsonFields(extraFieldsStream);
-        std::string extraFields = extraFieldsStream.str();
-
-        // Check if we have data AND it is not the unwanted "..." fragment
-        bool isDebugPlaceholder = (extraFields.find("...") != std::string::npos);
-
-        if (!extraFields.empty() && !isDebugPlaceholder) {
-            output << ",\n";  // Safely inject the comma here
-            output << extraFields;
-        }
-        output << "\n";
-        output << "    }";
-    }
-
-    output << "\n  ],\n";
-    output << "  \"stats\": {\n";
-    output << "    \"triangles\": " << stats.triangles << ",\n";
-    output << "    \"texturedTriangles\": " << stats.texturedTriangles << ",\n";
-    output << "    \"rectangles\": " << stats.rectangles << ",\n";
-    output << "    \"sprites\": " << stats.sprites << ",\n";
-    output << "    \"pixelWrites\": " << stats.pixelWrites << ",\n";
-    output << "    \"pixelReads\": " << stats.pixelReads << ",\n";
-    output << "    \"texelReads\": " << stats.texelReads << "\n";
-    output << "  }\n";
-    output << "}\n";
+    writeFrameLog(output, m_frameCounter, m_gteFrameLog, commands, stats);
 
     return output.good();
+}
+
+size_t PCSX::GPULogger::saveFrameLogSplit(const std::filesystem::path& path, size_t maxBytes) {
+    GPU::GPUStats totalStats;
+    auto serialized = serializeCommands(m_list, totalStats);
+
+    std::filesystem::path basePath = path;
+    if (basePath.extension().empty()) {
+        basePath.replace_extension(".json");
+    }
+
+    if (serialized.empty()) {
+        std::ostringstream suffix;
+        suffix << "_" << std::setfill('0') << std::setw(2) << 1;
+        auto partPath = basePath.parent_path() / (basePath.stem().string() + suffix.str() + basePath.extension().string());
+
+        std::ofstream output(partPath);
+        if (!output.is_open()) return 0;
+
+        writeFrameLog(output, m_frameCounter, m_gteFrameLog, {}, totalStats);
+
+        return output.good() ? 1 : 0;
+    }
+
+    std::vector<std::string> partCommands;
+    PCSX::GPU::GPUStats partStats;
+    size_t commandIndex = 0;
+    size_t partIndex = 1;
+    size_t writtenParts = 0;
+
+    while (commandIndex < serialized.size()) {
+        const auto& nextCommand = serialized[commandIndex];
+
+        auto candidateCommands = partCommands;
+        candidateCommands.push_back(nextCommand.json);
+        auto candidateStats = partStats;
+        accumulateStats(candidateStats, nextCommand.stats);
+
+        std::ostringstream sizeProbe;
+        writeFrameLog(sizeProbe, m_frameCounter, m_gteFrameLog, candidateCommands, candidateStats);
+        auto serializedSize = static_cast<std::size_t>(sizeProbe.tellp());
+
+        if (!partCommands.empty() && serializedSize > maxBytes) {
+            // Finish the current part before adding the command that exceeds the limit.
+        } else {
+            partCommands = std::move(candidateCommands);
+            partStats = candidateStats;
+            ++commandIndex;
+
+            if (serializedSize <= maxBytes || partCommands.size() == 1) {
+                continue;
+            }
+        }
+
+        if (partCommands.empty()) {
+            partCommands.push_back(nextCommand.json);
+            partStats = nextCommand.stats;
+            ++commandIndex;
+        }
+
+        std::ostringstream suffix;
+        suffix << '_' << std::setfill('0') << std::setw(2) << partIndex++;
+        auto partPath = basePath.parent_path() / (basePath.stem().string() + suffix.str() + basePath.extension().string());
+
+        std::ofstream output(partPath);
+        if (!output.is_open()) return 0;
+
+        writeFrameLog(output, m_frameCounter, m_gteFrameLog, partCommands, partStats);
+        if (!output.good()) return 0;
+
+        ++writtenParts;
+
+        partCommands.clear();
+        partStats = {};
+    }
+
+    if (!partCommands.empty()) {
+        std::ostringstream suffix;
+        suffix << '_' << std::setfill('0') << std::setw(2) << partIndex++;
+        auto partPath = basePath.parent_path() / (basePath.stem().string() + suffix.str() + basePath.extension().string());
+
+        std::ofstream output(partPath);
+        if (!output.is_open()) return 0;
+
+        writeFrameLog(output, m_frameCounter, m_gteFrameLog, partCommands, partStats);
+        if (!output.good()) return 0;
+
+        ++writtenParts;
+    }
+
+    return writtenParts;
 }
 
 void PCSX::GPULogger::startNewFrame() {

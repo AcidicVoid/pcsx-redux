@@ -56,6 +56,7 @@ class GPULogger {
     bool isGteLoggingEnabled() const { return m_logGteStates; }
     bool isVertexFetchLoggingEnabled() const { return m_logVertexFetches; }
     bool saveFrameLog(const std::filesystem::path& path);
+    size_t saveFrameLogSplit(const std::filesystem::path& path, size_t maxBytes);
     void replay(GPU*);
     void highlight(GPU::Logged* node, bool only = false);
     void enable();
