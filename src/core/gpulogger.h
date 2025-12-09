@@ -23,8 +23,10 @@
 
 #include <array>
 #include <filesystem>
+#include <optional>
 
 #include "core/gpu.h"
+#include "core/gpulogger_types.h"
 #include "support/eventbus.h"
 #include "support/opengl.h"
 #include "support/slice.h"
@@ -45,6 +47,7 @@ class GPULogger {
             addNodeInternal(new T(data), origin, value, length);
         }
     }
+    void recordGteState(const GTEState& state) { m_lastGteState = state; }
     bool saveFrameLog(const std::filesystem::path& path);
     void replay(GPU*);
     void highlight(GPU::Logged* node, bool only = false);
@@ -68,6 +71,8 @@ class GPULogger {
     Slice m_vram;
     float m_impact = 1.0f / 256.0f;
     float m_decayRate = 1.0f / 1024.0f;
+
+    std::optional<GTEState> m_lastGteState;
 
     std::array<OpenGL::ivec2, 3 * 0x10000> m_vertices;
     unsigned m_verticesCount = 0;

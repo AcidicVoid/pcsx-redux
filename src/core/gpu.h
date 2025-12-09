@@ -26,13 +26,16 @@
 #include <functional>
 #include <magic_enum_all.hpp>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
+#include "core/gpulogger_types.h"
 #include "core/psxemulator.h"
 #include "core/psxmem.h"
 #include "support/eventbus.h"
@@ -179,8 +182,11 @@ class GPU {
         void addLine(AddTri &&, int x1, int y1, int x2, int y2);
 
         uint64_t frame;
-        uint32_t value, length;
+        uint32_t length;
         uint32_t pc;
+        uint32_t sourceAddr = 0;
+        std::vector<uint32_t> words;
+        std::optional<GTEState> gteState;
 
         Origin origin;
 
@@ -325,7 +331,10 @@ class GPU {
         bool writeJsonFields(std::ostream &) const override;
         FastFill(GPU *parent) : Command(parent) {}
         void processWrite(Buffer &, Logged::Origin, uint32_t value, uint32_t length) override;
-        void reset() override { m_state = READ_COLOR; }
+        void reset() override {
+            m_state = READ_COLOR;
+            words.clear();
+        }
         bool isInside(unsigned x, unsigned y) override {
             return (x >= this->x) && (y >= this->y) && (x < this->x + this->w) && (y < this->y + this->h);
         }
@@ -353,7 +362,10 @@ class GPU {
         bool writeJsonFields(std::ostream &) const override;
         BlitVramVram(GPU *parent) : Command(parent) {}
         void processWrite(Buffer &, Logged::Origin, uint32_t value, uint32_t length) override;
-        void reset() override { m_state = READ_COMMAND; }
+        void reset() override {
+            m_state = READ_COMMAND;
+            words.clear();
+        }
         bool isInside(unsigned x, unsigned y) override {
             return (x >= this->dX) && (y >= this->dY) && (x < this->dX + this->w) && (y < this->dY + this->h);
         }
@@ -392,6 +404,7 @@ class GPU {
         void reset() override {
             m_state = READ_COMMAND;
             m_data.clear();
+            words.clear();
         }
         bool isInside(unsigned x, unsigned y) override {
             return (x >= this->x) && (y >= this->y) && (x < this->x + this->w) && (y < this->y + this->h);
@@ -421,6 +434,10 @@ class GPU {
         bool writeJsonFields(std::ostream &) const override;
         BlitVramRam(GPU *parent) : Command(parent) {}
         void processWrite(Buffer &, Logged::Origin, uint32_t value, uint32_t length) override;
+        void reset() override {
+            m_state = READ_COMMAND;
+            words.clear();
+        }
 
         unsigned x, y, w, h;
 
@@ -556,6 +573,7 @@ class GPU {
         void reset() override {
             m_state = READ_COLOR;
             m_count = 0;
+            words.clear();
         }
         bool isInside(unsigned x, unsigned y) override {
             if constexpr (shape == Shape::Tri) {
@@ -630,6 +648,7 @@ class GPU {
                 y.clear();
                 colors.clear();
             }
+            words.clear();
         }
         bool isInside(unsigned x, unsigned y) override {
             if constexpr (lineType == LineType::Simple) {
@@ -672,7 +691,10 @@ class GPU {
         bool writeJsonFields(std::ostream &) const override;
         Rect() {}
         void processWrite(Buffer &, Logged::Origin, uint32_t value, uint32_t length) override;
-        void reset() override { m_state = READ_COLOR; }
+        void reset() override {
+            m_state = READ_COLOR;
+            words.clear();
+        }
         bool isInside(unsigned x, unsigned y) override {
             return (x >= (this->x + offset.x)) && (y >= (this->y + offset.y)) && (x < (this->x + offset.x) + this->w) &&
                    (y < (this->y + offset.y) + this->h);

@@ -43,13 +43,18 @@ namespace PCSX {
 // clang-format doesn't understand duff's device pattern...
 template <GPU::Shading shading, GPU::Shape shape, GPU::Textured textured, GPU::Blend blend, GPU::Modulation modulation>
 void GPU::Poly<shading, shape, textured, blend, modulation>::processWrite(Buffer & buf, Logged::Origin origin, uint32_t origvalue, uint32_t length) {
+    if (words.empty()) {
+        words.clear();
+    }
     uint32_t value = buf.get();
+    words.push_back(value);
     switch (m_state) {
         for (/* m_count = 0 */; m_count < count; m_count++) {
             if (shading == Shading::Gouraud) {
                 m_state = READ_COLOR;
                 if (buf.isEmpty()) return;
                 value = buf.get();
+                words.push_back(value);
                 [[fallthrough]];
         case READ_COLOR:
                 if constexpr ((textured == Textured::Yes) && (modulation == Modulation::Off)) {
@@ -63,6 +68,7 @@ void GPU::Poly<shading, shape, textured, blend, modulation>::processWrite(Buffer
             m_state = READ_XY;
             if (buf.isEmpty()) return;
             value = buf.get();
+            words.push_back(value);
             [[fallthrough]];
         case READ_XY:
             x[m_count] = GPU::signExtend<int, 11>(value & 0xffff);
@@ -71,6 +77,7 @@ void GPU::Poly<shading, shape, textured, blend, modulation>::processWrite(Buffer
                 m_state = READ_UV;
                 if (buf.isEmpty()) return;
                 value = buf.get();
+                words.push_back(value);
                 [[fallthrough]];
         case READ_UV:
                 if constexpr (textured == Textured::Yes) {
@@ -102,7 +109,11 @@ void GPU::Poly<shading, shape, textured, blend, modulation>::processWrite(Buffer
 
 template <GPU::Shading shading, GPU::LineType lineType, GPU::Blend blend>
 void GPU::Line<shading, lineType, blend>::processWrite(Buffer & buf, Logged::Origin origin, uint32_t origvalue, uint32_t length) {
+    if (words.empty()) {
+        words.clear();
+    }
     uint32_t value = buf.get();
+    words.push_back(value);
     if constexpr (lineType == LineType::Poly) {
         while ((value & 0xf000f000) != 0x50005000) {
             switch (m_state) {
@@ -111,6 +122,7 @@ void GPU::Line<shading, lineType, blend>::processWrite(Buffer & buf, Logged::Ori
                     m_state = READ_XY;
                     if (buf.isEmpty()) return;
                     value = buf.get();
+                    words.push_back(value);
                     [[fallthrough]];
                 case READ_XY:
                     if constexpr (shading == Shading::Flat) {
@@ -122,8 +134,10 @@ void GPU::Line<shading, lineType, blend>::processWrite(Buffer & buf, Logged::Ori
                     y.push_back(GPU::signExtend<int, 11>(value >> 16));
                     if (buf.isEmpty()) return;
                     value = buf.get();
+                    words.push_back(value);
             }
         }
+        words.push_back(value);
     } else {
         switch (m_state) {
             for (/* m_count = 0 */; m_count < 2; m_count++) {
@@ -131,6 +145,7 @@ void GPU::Line<shading, lineType, blend>::processWrite(Buffer & buf, Logged::Ori
                     m_state = READ_COLOR;
                     if (buf.isEmpty()) return;
                     value = buf.get();
+                    words.push_back(value);
                     [[fallthrough]];
             case READ_COLOR:
                     colors[m_count] = value & 0xffffff;
@@ -140,6 +155,7 @@ void GPU::Line<shading, lineType, blend>::processWrite(Buffer & buf, Logged::Ori
                 m_state = READ_XY;
                 if (buf.isEmpty()) return;
                 value = buf.get();
+                words.push_back(value);
                 [[fallthrough]];
             case READ_XY:
                 x[m_count] = GPU::signExtend<int, 11>(value & 0xffff);
@@ -168,7 +184,11 @@ void GPU::Line<shading, lineType, blend>::processWrite(Buffer & buf, Logged::Ori
 
 template <GPU::Size size, GPU::Textured textured, GPU::Blend blend, GPU::Modulation modulation>
 void GPU::Rect<size, textured, blend, modulation>::processWrite(Buffer & buf, Logged::Origin origin, uint32_t origvalue, uint32_t length) {
+    if (words.empty()) {
+        words.clear();
+    }
     uint32_t value = buf.get();
+    words.push_back(value);
     switch (m_state) {
         case READ_COLOR:
             if constexpr ((textured == Textured::No) || (modulation == Modulation::On)) {
@@ -177,6 +197,7 @@ void GPU::Rect<size, textured, blend, modulation>::processWrite(Buffer & buf, Lo
             m_state = READ_XY;
             if (buf.isEmpty()) return;
             value = buf.get();
+            words.push_back(value);
             [[fallthrough]];
         case READ_XY:
             x = GPU::signExtend<int, 11>(value & 0xffff);
@@ -185,6 +206,7 @@ void GPU::Rect<size, textured, blend, modulation>::processWrite(Buffer & buf, Lo
                 m_state = READ_UV;
                 if (buf.isEmpty()) return;
                 value = buf.get();
+                words.push_back(value);
                 [[fallthrough]];
         case READ_UV:
                 if constexpr (textured == Textured::Yes) {
@@ -773,6 +795,7 @@ void PCSX::GPU::Command::processWrite(Buffer &buf, Logged::Origin origin, uint32
                 switch (command) {
                     case 0x01: {  // clear cache
                         ClearCache prim;
+                        prim.words = {value};
                         m_gpu->write0(&prim);
                         g_emulator->m_gpuLogger->addNode(prim, origin, originValue, length);
                     } break;
@@ -817,12 +840,14 @@ void PCSX::GPU::Command::processWrite(Buffer &buf, Logged::Origin origin, uint32
                 switch (command) {
                     case 1: {  // tpage
                         TPage prim(packetInfo);
+                        prim.words = {value};
                         m_gpu->m_lastTPage = TPage(packetInfo);
                         g_emulator->m_gpuLogger->addNode(prim, origin, originValue, length);
                         m_gpu->write0(&prim);
                     } break;
                     case 2: {  // twindow
                         TWindow prim(packetInfo);
+                        prim.words = {value};
                         m_gpu->m_lastTWindow = TWindow(packetInfo);
                         g_emulator->m_gpuLogger->addNode(prim, origin, originValue, length);
                         m_gpu->write0(&prim);
@@ -830,18 +855,21 @@ void PCSX::GPU::Command::processWrite(Buffer &buf, Logged::Origin origin, uint32
                     } break;
                     case 3: {  // drawing area top left
                         DrawingAreaStart prim(packetInfo);
+                        prim.words = {value};
                         g_emulator->m_gpuLogger->addNode(prim, origin, originValue, length);
                         m_gpu->write0(&prim);
                         m_gpu->m_drawingStartRaw = packetInfo & 0xfffff;
                     } break;
                     case 4: {  // drawing area bottom right
                         DrawingAreaEnd prim(packetInfo);
+                        prim.words = {value};
                         g_emulator->m_gpuLogger->addNode(prim, origin, originValue, length);
                         m_gpu->write0(&prim);
                         m_gpu->m_drawingEndRaw = packetInfo & 0xfffff;
                     } break;
                     case 5: {  // drawing offset
                         DrawingOffset prim(packetInfo);
+                        prim.words = {value};
                         m_gpu->m_lastOffset = DrawingOffset(packetInfo);
                         g_emulator->m_gpuLogger->addNode(prim, origin, originValue, length);
                         m_gpu->write0(&prim);
@@ -849,6 +877,7 @@ void PCSX::GPU::Command::processWrite(Buffer &buf, Logged::Origin origin, uint32
                     } break;
                     case 6: {  // mask bit
                         MaskBit prim(packetInfo);
+                        prim.words = {value};
                         g_emulator->m_gpuLogger->addNode(prim, origin, originValue, length);
                         m_gpu->write0(&prim);
                     } break;
@@ -866,13 +895,18 @@ void PCSX::GPU::Command::processWrite(Buffer &buf, Logged::Origin origin, uint32
 }
 
 void PCSX::GPU::FastFill::processWrite(Buffer &buf, Logged::Origin origin, uint32_t origvalue, uint32_t length) {
+    if (words.empty()) {
+        words.clear();
+    }
     uint32_t value = buf.get();
+    words.push_back(value);
     switch (m_state) {
         case READ_COLOR:
             color = value & 0xffffff;
             m_state = READ_XY;
             if (buf.isEmpty()) return;
             value = buf.get();
+            words.push_back(value);
             [[fallthrough]];
         case READ_XY:
             x = value & 0xffff;
@@ -880,6 +914,7 @@ void PCSX::GPU::FastFill::processWrite(Buffer &buf, Logged::Origin origin, uint3
             m_state = READ_WH;
             if (buf.isEmpty()) return;
             value = buf.get();
+            words.push_back(value);
             [[fallthrough]];
         case READ_WH:
             w = value & 0xffff;
@@ -898,6 +933,9 @@ void PCSX::GPU::FastFill::processWrite(Buffer &buf, Logged::Origin origin, uint3
 }
 
 void PCSX::GPU::BlitVramVram::processWrite(Buffer &buf, Logged::Origin origin, uint32_t origvalue, uint32_t length) {
+    if (words.empty()) {
+        words.clear();
+    }
     uint32_t value;
     switch (m_state) {
         case READ_COMMAND:
@@ -906,6 +944,7 @@ void PCSX::GPU::BlitVramVram::processWrite(Buffer &buf, Logged::Origin origin, u
             [[fallthrough]];
         case READ_SRC_XY:
             value = buf.get();
+            words.push_back(value);
             sX = signExtend<int, 11>(value & 0xffff);
             sY = signExtend<int, 11>(value >> 16);
             m_state = READ_DST_XY;
@@ -913,6 +952,7 @@ void PCSX::GPU::BlitVramVram::processWrite(Buffer &buf, Logged::Origin origin, u
             [[fallthrough]];
         case READ_DST_XY:
             value = buf.get();
+            words.push_back(value);
             dX = signExtend<int, 11>(value & 0xffff);
             dY = signExtend<int, 11>(value >> 16);
             m_state = READ_HW;
@@ -920,6 +960,7 @@ void PCSX::GPU::BlitVramVram::processWrite(Buffer &buf, Logged::Origin origin, u
             [[fallthrough]];
         case READ_HW:
             value = buf.get();
+            words.push_back(value);
             w = value & 0xffff;
             h = value >> 16;
             raw.sX = sX;
@@ -939,6 +980,9 @@ void PCSX::GPU::BlitVramVram::processWrite(Buffer &buf, Logged::Origin origin, u
 }
 
 void PCSX::GPU::BlitRamVram::processWrite(Buffer &buf, Logged::Origin origin, uint32_t origvalue, uint32_t length) {
+    if (words.empty()) {
+        words.clear();
+    }
     uint32_t value;
     size_t size = (w * h + 1) / 2;
     bool done = false;
@@ -949,6 +993,7 @@ void PCSX::GPU::BlitRamVram::processWrite(Buffer &buf, Logged::Origin origin, ui
             [[fallthrough]];
         case READ_XY:
             value = buf.get();
+            words.push_back(value);
             x = signExtend<int, 11>(value & 0xffff);
             y = signExtend<int, 11>(value >> 16);
             m_state = READ_HW;
@@ -956,6 +1001,7 @@ void PCSX::GPU::BlitRamVram::processWrite(Buffer &buf, Logged::Origin origin, ui
             [[fallthrough]];
         case READ_HW:
             value = buf.get();
+            words.push_back(value);
             w = value & 0xffff;
             h = value >> 16;
             size = (w * h + 1) / 2;
@@ -966,11 +1012,13 @@ void PCSX::GPU::BlitRamVram::processWrite(Buffer &buf, Logged::Origin origin, ui
             [[fallthrough]];
         case READ_PIXELS:
             if ((buf.size() >= size) && (m_data.empty())) {
+                words.insert(words.end(), buf.data(), buf.data() + size);
                 data.borrow(buf.data(), size * 4);
                 buf.consume(size);
                 done = true;
             } else {
                 size_t toConsume = std::min(buf.size(), size - m_data.size() / 4);
+                words.insert(words.end(), buf.data(), buf.data() + toConsume);
                 m_data.append(reinterpret_cast<const char *>(buf.data()), toConsume * 4);
                 done = m_data.size() == size * 4;
                 buf.consume(toConsume);
@@ -997,6 +1045,9 @@ void PCSX::GPU::BlitRamVram::processWrite(Buffer &buf, Logged::Origin origin, ui
 void PCSX::GPU::BlitRamVram::execute(GPU *gpu) { gpu->partialUpdateVRAM(x, y, w, h, data.data<uint16_t>()); }
 
 void PCSX::GPU::BlitVramRam::processWrite(Buffer &buf, Logged::Origin origin, uint32_t origvalue, uint32_t length) {
+    if (words.empty()) {
+        words.clear();
+    }
     uint32_t value;
     switch (m_state) {
         case READ_COMMAND:
@@ -1006,6 +1057,7 @@ void PCSX::GPU::BlitVramRam::processWrite(Buffer &buf, Logged::Origin origin, ui
             [[fallthrough]];
         case READ_XY:
             value = buf.get();
+            words.push_back(value);
             x = signExtend<int, 11>(value & 0xffff);
             y = signExtend<int, 11>(value >> 16);
             m_state = READ_HW;
@@ -1013,6 +1065,7 @@ void PCSX::GPU::BlitVramRam::processWrite(Buffer &buf, Logged::Origin origin, ui
             [[fallthrough]];
         case READ_HW:
             value = buf.get();
+            words.push_back(value);
             w = value & 0xffff;
             h = value >> 16;
             raw.x = x;
@@ -1253,6 +1306,23 @@ constexpr const char *sizeString() {
     }
 }
 
+template <PCSX::GPU::Shading shading, PCSX::GPU::Shape shape, PCSX::GPU::Textured textured>
+constexpr const char *polyPacketType() {
+    if constexpr (textured == PCSX::GPU::Textured::Yes) {
+        if constexpr (shape == PCSX::GPU::Shape::Tri) {
+            return shading == PCSX::GPU::Shading::Flat ? "FT3" : "GT3";
+        } else {
+            return shading == PCSX::GPU::Shading::Flat ? "FT4" : "GT4";
+        }
+    } else {
+        if constexpr (shape == PCSX::GPU::Shape::Tri) {
+            return shading == PCSX::GPU::Shading::Flat ? "F3" : "G3";
+        } else {
+            return shading == PCSX::GPU::Shading::Flat ? "F4" : "G4";
+        }
+    }
+}
+
 const char *boolString(bool value) { return value ? "true" : "false"; }
 
 }  // namespace
@@ -1263,15 +1333,28 @@ bool PCSX::GPU::Poly<shading, shape, textured, blend, modulation>::writeJsonFiel
     output << ",\n";
     output << "      \"details\": {\n";
     output << "        \"primitive\": \"polygon\",\n";
+    output << "        \"type\": \"" << polyPacketType<shading, shape, textured>() << "\",\n";
     output << "        \"shape\": \"" << shapeString<shape>() << "\",\n";
     output << "        \"shading\": \"" << shadingString<shading>() << "\",\n";
     output << "        \"textured\": " << texturedString<textured>() << ",\n";
     output << "        \"blend\": \"" << blendString<blend>() << "\",\n";
     output << "        \"modulation\": \"" << modulationString<modulation>() << "\",\n";
-    output << "        \"offset\": {\"x\": " << offset.x << ", \"y\": " << offset.y << "}";
+    output << "        \"offset\": {\"x\": " << offset.x << ", \"y\": " << offset.y << "},\n";
+    output << "        \"vertices\": [";
+    for (unsigned i = 0; i < count; i++) {
+        output << "[" << x[i] << ", " << y[i] << "]";
+        if (i + 1 < count) output << ", ";
+    }
+    output << "],\n";
     if constexpr (textured == Textured::Yes) {
-        output << ",\n";
-        output << "        \"texture\": {\n";
+        output << "        \"uvs\": [";
+        for (unsigned i = 0; i < count; i++) {
+            output << "[" << u[i] << ", " << v[i] << "]";
+            if (i + 1 < count) output << ", ";
+        }
+        output << "],\n";
+        output << "        \"clut\": [" << clutX() << ", " << clutY() << "],\n";
+        output << "        \"texpage\": {\n";
         output << "          \"tpageX\": " << tpage.tx << ",\n";
         output << "          \"tpageY\": " << tpage.ty << ",\n";
         output << "          \"raw\": " << tpage.raw << ",\n";
@@ -1281,13 +1364,11 @@ bool PCSX::GPU::Poly<shading, shape, textured, blend, modulation>::writeJsonFiel
         output << "          \"drawToDisplay\": " << boolString(tpage.drawToDisplay) << ",\n";
         output << "          \"textureDisable\": " << boolString(tpage.texDisable) << ",\n";
         output << "          \"xflip\": " << boolString(tpage.xflip) << ",\n";
-        output << "          \"yflip\": " << boolString(tpage.yflip) << ",\n";
-        output << "          \"clut\": {\"x\": " << clutX() << ", \"y\": " << clutY() << ", \"raw\": " << clutraw
-               << "}\n";
+        output << "          \"yflip\": " << boolString(tpage.yflip) << "\n";
         output << "        }";
     }
     output << ",\n";
-    output << "        \"vertices\": [\n";
+    output << "        \"detailedVertices\": [\n";
     for (unsigned i = 0; i < count; i++) {
         unsigned txPage = 0;
         unsigned tyPage = 0;
