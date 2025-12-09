@@ -298,7 +298,10 @@ static PCSX::GTEState::Snapshot captureGteSnapshot() {
 }
 
 static void logGteCommand(PCSX::GTEState::Command command, GTELogStage stage) {
-    if (!PCSX::g_emulator->m_gpuLogger) return;
+    auto* logger = PCSX::g_emulator->m_gpuLogger;
+    if (!logger) return;
+
+    if (!logger->isEnabled() && !logger->isGteLoggingEnabled() && !logger->isVertexFetchLoggingEnabled()) return;
 
     static std::optional<PCSX::GTEState> s_currentLog;
 
@@ -317,7 +320,7 @@ static void logGteCommand(PCSX::GTEState::Command command, GTELogStage stage) {
     }
 
     s_currentLog->output = captureGteSnapshot();
-    PCSX::g_emulator->m_gpuLogger->recordGteState(*s_currentLog);
+    logger->recordGteState(*s_currentLog);
     s_currentLog.reset();
 }
 

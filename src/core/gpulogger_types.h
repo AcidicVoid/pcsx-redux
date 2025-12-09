@@ -5,8 +5,23 @@
 
 #include <array>
 #include <cstdint>
+#include <vector>
 
 namespace PCSX {
+
+struct GTEFetchContext {
+    uint32_t pc = 0;
+    uint32_t address = 0;
+    uint32_t baseRegister = 0;
+    uint32_t baseValue = 0;
+    int16_t offset = 0;
+    uint32_t targetRegister = 0;
+    uint32_t value = 0;
+};
+
+struct GTELogMetadata {
+    std::vector<GTEFetchContext> vertexFetches;
+};
 
 struct GTEState {
     enum class Command {
@@ -57,6 +72,7 @@ struct GTEState {
     uint32_t pc = 0;
     Snapshot input;
     Snapshot output;
+    GTELogMetadata metadata;
 };
 
 }  // namespace PCSX

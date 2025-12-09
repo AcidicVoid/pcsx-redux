@@ -84,6 +84,19 @@ void PCSX::Widgets::GPULogger::draw(PCSX::GPULogger* logger, const char* title) 
         _("Logs each frame's draw calls. When enabled, all the commands sent to the GPU will be logged and displayed "
           "here. This will contain only a single frame worth of commands. The feature can be pretty demanding in CPU "
           "and memory."));
+    bool gteLogging = logger->isGteLoggingEnabled();
+    if (ImGui::Checkbox(_("GTE logging"), &gteLogging)) {
+        logger->setGteLoggingEnabled(gteLogging);
+    }
+    ImGuiHelpers::ShowHelpMarker(
+        _("When enabled, captures before/after snapshots for each GTE command and includes them in the frame log."));
+    bool vertexFetchLogging = logger->isVertexFetchLoggingEnabled();
+    if (ImGui::Checkbox(_("CPU vertex fetch logging"), &vertexFetchLogging)) {
+        logger->setVertexFetchLoggingEnabled(vertexFetchLogging);
+    }
+    ImGuiHelpers::ShowHelpMarker(
+        _("When enabled, records CPU-side reads feeding the GTE (addresses, registers and PC) and emits them alongside "
+          "GTE logs."));
     ImGui::Checkbox(_("Breakpoint on vsync"), &logger->m_breakOnVSync);
     ImGui::SameLine();
     if (ImGui::Button(_("Resume"))) {
