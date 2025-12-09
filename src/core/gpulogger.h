@@ -49,6 +49,12 @@ class GPULogger {
         }
     }
     void recordGteState(const GTEState& state);
+    void recordVertexFetch(const GTEFetchContext& fetch);
+    void setGteLoggingEnabled(bool enabled) { m_logGteStates = enabled; }
+    void setVertexFetchLoggingEnabled(bool enabled) { m_logVertexFetches = enabled; }
+    bool isEnabled() const { return m_enabled; }
+    bool isGteLoggingEnabled() const { return m_logGteStates; }
+    bool isVertexFetchLoggingEnabled() const { return m_logVertexFetches; }
     bool saveFrameLog(const std::filesystem::path& path);
     void replay(GPU*);
     void highlight(GPU::Logged* node, bool only = false);
@@ -62,11 +68,15 @@ class GPULogger {
   private:
     void startNewFrame();
     void addNodeInternal(GPU::Logged* node, GPU::Logged::Origin, uint32_t value, uint32_t length);
+    void handleFrameChange();
+    void clearPendingFetches();
 
     EventBus::Listener m_listener;
     bool m_enabled = false;
     bool m_breakOnVSync = false;
     bool m_hasFramebuffers = false;
+    bool m_logGteStates = false;
+    bool m_logVertexFetches = false;
     uint64_t m_frameCounter = 0;
     uint64_t m_lastGteFrame = 0;
     GPU::LoggedList m_list;
@@ -76,6 +86,7 @@ class GPULogger {
 
     std::optional<GTEState> m_lastGteState;
     std::vector<GTEState> m_gteFrameLog;
+    std::vector<GTEFetchContext> m_pendingFetches;
 
     std::array<OpenGL::ivec2, 3 * 0x10000> m_vertices;
     unsigned m_verticesCount = 0;

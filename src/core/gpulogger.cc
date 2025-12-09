@@ -79,23 +79,49 @@ PCSX::GPULogger::GPULogger() : m_listener(g_system->m_eventBus) {
     });
 }
 
+void PCSX::GPULogger::handleFrameChange() {
+    if (m_lastGteFrame != m_frameCounter) {
+        m_lastGteFrame = m_frameCounter;
+        m_gteFrameLog.clear();
+        m_lastGteState.reset();
+        m_pendingFetches.clear();
+    }
+}
+
+void PCSX::GPULogger::clearPendingFetches() {
+    m_pendingFetches.clear();
+}
+
 void PCSX::GPULogger::clearFrameLog() {
     m_list.destroyAll();
     m_gteFrameLog.clear();
     m_lastGteState.reset();
     m_lastGteFrame = m_frameCounter;
+    clearPendingFetches();
 }
 
 void PCSX::GPULogger::recordGteState(const GTEState& state) {
-    if (m_lastGteFrame != m_frameCounter) {
-        m_lastGteFrame = m_frameCounter;
-        m_gteFrameLog.clear();
-        m_lastGteState.reset();
+    if (!m_enabled && !m_logGteStates && !m_logVertexFetches) return;
+
+    handleFrameChange();
+
+    GTEState loggedState = state;
+    if (m_logVertexFetches && !m_pendingFetches.empty()) {
+        loggedState.metadata.vertexFetches = m_pendingFetches;
     }
-    m_lastGteState = state;
-    if (m_enabled) {
-        m_gteFrameLog.push_back(state);
+
+    m_pendingFetches.clear();
+    m_lastGteState = loggedState;
+    if (m_logGteStates || m_logVertexFetches) {
+        m_gteFrameLog.push_back(loggedState);
     }
+}
+
+void PCSX::GPULogger::recordVertexFetch(const GTEFetchContext& fetch) {
+    if (!m_logVertexFetches) return;
+
+    handleFrameChange();
+    m_pendingFetches.push_back(fetch);
 }
 
 namespace {
@@ -212,6 +238,33 @@ void writeRegistersJson(std::ostream& output, std::string_view name, const std::
         if (i + 1 < registers.size()) output << ", ";
     }
     output << "]\n";
+}
+
+void writeGteMetadataJson(std::ostream& output, const PCSX::GTELogMetadata& metadata, const char* indent) {
+    if (metadata.vertexFetches.empty()) return;
+
+    output << indent << "\"metadata\": {\n";
+    output << indent << "  \"vertexFetches\": [\n";
+    bool first = true;
+    for (const auto& fetch : metadata.vertexFetches) {
+        if (!first) output << ",\n";
+        first = false;
+
+        std::ostringstream pcStream;
+        pcStream << std::hex << std::setw(8) << std::setfill('0') << fetch.pc;
+
+        output << indent << "    {\n";
+        output << indent << "      \"pc\": \"0x" << pcStream.str() << "\",\n";
+        output << indent << "      \"address\": " << fetch.address << ",\n";
+        output << indent << "      \"baseRegister\": " << fetch.baseRegister << ",\n";
+        output << indent << "      \"baseValue\": " << fetch.baseValue << ",\n";
+        output << indent << "      \"offset\": " << fetch.offset << ",\n";
+        output << indent << "      \"targetRegister\": " << fetch.targetRegister << ",\n";
+        output << indent << "      \"value\": " << fetch.value << "\n";
+        output << indent << "    }";
+    }
+    output << "\n" << indent << "  ]\n";
+    output << indent << "}";
 }
 
 void writeGteSnapshotJson(std::ostream& output, std::string_view name, const PCSX::GTEState::Snapshot& snapshot,
@@ -397,6 +450,10 @@ bool PCSX::GPULogger::saveFrameLog(const std::filesystem::path& path) {
         writeGteSnapshotJson(output, "input", state.input, "      ");
         output << ",\n";
         writeGteSnapshotJson(output, "output", state.output, "      ");
+        if (!state.metadata.vertexFetches.empty()) {
+            output << ",\n";
+            writeGteMetadataJson(output, state.metadata, "      ");
+        }
         output << "\n    }";
     }
 
@@ -442,6 +499,10 @@ bool PCSX::GPULogger::saveFrameLog(const std::filesystem::path& path) {
             writeGteSnapshotJson(output, "input", gte.input, "        ");
             output << ",\n";
             writeGteSnapshotJson(output, "output", gte.output, "        ");
+            if (!gte.metadata.vertexFetches.empty()) {
+                output << ",\n";
+                writeGteMetadataJson(output, gte.metadata, "        ");
+            }
             output << "\n      }";
         }
         logged.writeJsonFields(output);
@@ -469,6 +530,7 @@ void PCSX::GPULogger::startNewFrame() {
     m_gteFrameLog.clear();
     m_lastGteState.reset();
     m_lastGteFrame = m_frameCounter;
+    clearPendingFetches();
 }
 
 void PCSX::GPULogger::replay(GPU* gpu) {
