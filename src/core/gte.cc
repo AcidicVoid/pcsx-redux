@@ -282,6 +282,13 @@ static void logGteCommand(PCSX::GTEState::Command command) {
     state.lightMatrix = {{{L11, L12, L13}, {L21, L22, L23}, {L31, L32, L33}}};
     state.colorMatrix = {{{LR1, LR2, LR3}, {LG1, LG2, LG3}, {LB1, LB2, LB3}}};
     state.translation = {TRX, TRY, TRZ};
+    state.offsetX = OFX;
+    state.offsetY = OFY;
+    state.projectionPlaneDistance = H;
+    state.depthQueueA = DQA;
+    state.depthQueueB = DQB;
+    state.depthScaleFactor3 = ZSF3;
+    state.depthScaleFactor4 = ZSF4;
     PCSX::g_emulator->m_gpuLogger->recordGteState(state);
 }
 
