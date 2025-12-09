@@ -23,6 +23,7 @@
 #include "core/psxemulator.h"
 #include "core/r3000a.h"
 #include "core/gpulogger_types.h"
+#include "core/gpulogger.h"
 
 // WTF termios
 #undef NCCS
@@ -63,7 +64,7 @@ class GTE {
             return;
         }
         const auto value = PCSX::g_emulator->m_mem->read32(gteoB);
-        if (auto* logger = PCSX::g_emulator->m_gpuLogger; logger && logger->isVertexFetchLoggingEnabled()) {
+        if (PCSX::g_emulator->m_gpuLogger && PCSX::g_emulator->m_gpuLogger->isVertexFetchLoggingEnabled()) {
             GTEFetchContext fetch{};
             fetch.pc = PCSX::g_emulator->m_cpu->m_regs.pc - 4;
             fetch.address = gteoB;
@@ -72,7 +73,7 @@ class GTE {
             fetch.offset = static_cast<int16_t>(_Imm_);
             fetch.targetRegister = _Rt_;
             fetch.value = value;
-            logger->recordVertexFetch(fetch);
+            PCSX::g_emulator->m_gpuLogger->recordVertexFetch(fetch);
         }
         MTC2_internal(value, _Rt_);
     }
