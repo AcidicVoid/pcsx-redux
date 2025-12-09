@@ -207,8 +207,10 @@ void PCSX::GPULogger::addNodeInternal(GPU::Logged* node, GPU::Logged::Origin ori
     if (gotNewFrame) startNewFrame();
 
     node->origin = origin;
-    node->value = value;
     node->length = length;
+    node->sourceAddr = value;
+    if (node->words.empty()) node->words.push_back(value);
+    node->gteState = m_lastGteState;
     node->pc = g_emulator->m_cpu->m_regs.pc;
     node->frame = frame;
     node->generateStatsInfo();
@@ -262,10 +264,39 @@ bool PCSX::GPULogger::saveFrameLog(const std::filesystem::path& path) {
         output << "      \"origin\": \"" << originToString(logged.origin) << "\",\n";
         output << "      \"frame\": " << logged.frame << ",\n";
         output << "      \"pc\": \"0x" << pcStream.str() << "\",\n";
-        output << "      \"value\": " << logged.value << ",\n";
-        output << "      \"length\": " << logged.length << ",\n";
+        output << "      \"source\": {\"address\": " << logged.sourceAddr << ", \"length\": " << logged.length
+               << "},\n";
+        output << "      \"words\": [";
+        for (size_t i = 0; i < logged.words.size(); ++i) {
+            output << logged.words[i];
+            if (i + 1 < logged.words.size()) output << ", ";
+        }
+        output << "],\n";
         output << "      \"enabled\": " << (logged.enabled ? "true" : "false") << ",\n";
         output << "      \"highlight\": " << (logged.highlight ? "true" : "false");
+        if (logged.gteState) {
+            const auto &gte = *logged.gteState;
+            output << ",\n";
+            output << "      \"gte\": {\n";
+            output << "        \"vx0\": [" << gte.vx0[0] << ", " << gte.vx0[1] << ", " << gte.vx0[2] << "],\n";
+            output << "        \"vx1\": [" << gte.vx1[0] << ", " << gte.vx1[1] << ", " << gte.vx1[2] << "],\n";
+            output << "        \"vx2\": [" << gte.vx2[0] << ", " << gte.vx2[1] << ", " << gte.vx2[2] << "],\n";
+            output << "        \"rotation\": [[" << gte.rotationMatrix[0] << ", " << gte.rotationMatrix[1] << ", "
+                   << gte.rotationMatrix[2] << "], [" << gte.rotationMatrixRow2[0] << ", " << gte.rotationMatrixRow2[1]
+                   << ", " << gte.rotationMatrixRow2[2] << "], [" << gte.rotationMatrixRow3[0] << ", "
+                   << gte.rotationMatrixRow3[1] << ", " << gte.rotationMatrixRow3[2] << "]],\n";
+            output << "        \"light\": [[" << gte.lightMatrix[0] << ", " << gte.lightMatrix[1] << ", "
+                   << gte.lightMatrix[2] << "], [" << gte.lightMatrixRow2[0] << ", " << gte.lightMatrixRow2[1] << ", "
+                   << gte.lightMatrixRow2[2] << "], [" << gte.lightMatrixRow3[0] << ", " << gte.lightMatrixRow3[1]
+                   << ", " << gte.lightMatrixRow3[2] << "]],\n";
+            output << "        \"color\": [[" << gte.colorMatrix[0] << ", " << gte.colorMatrix[1] << ", "
+                   << gte.colorMatrix[2] << "], [" << gte.colorMatrixRow2[0] << ", " << gte.colorMatrixRow2[1] << ", "
+                   << gte.colorMatrixRow2[2] << "], [" << gte.colorMatrixRow3[0] << ", " << gte.colorMatrixRow3[1]
+                   << ", " << gte.colorMatrixRow3[2] << "]],\n";
+            output << "        \"translation\": [" << gte.translation[0] << ", " << gte.translation[1] << ", "
+                   << gte.translation[2] << "]\n";
+            output << "      }";
+        }
         logged.writeJsonFields(output);
         output << "\n";
         output << "    }";
