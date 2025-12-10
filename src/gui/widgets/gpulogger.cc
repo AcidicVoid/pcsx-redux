@@ -190,7 +190,7 @@ void PCSX::Widgets::GPULogger::draw(PCSX::GPULogger* logger, const char* title) 
     ImGui::SameLine();
     if (ImGui::Button(_("Save frame log"))) {
         auto path = std::filesystem::path(m_exportPath.data());
-        if (logger->saveFrameLog(path)) {
+        if (logger->saveFrameLog(path, m_filterDrawOpcodes)) {
             m_exportStatus = fmt::format(f_("Saved frame {} to {}"), logger->m_frameCounter, path.string());
         } else {
             m_exportStatus = fmt::format(f_("Failed to save frame to {}"), path.string());
