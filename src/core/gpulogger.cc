@@ -33,6 +33,24 @@
 
 namespace {
 constexpr size_t c_maxLoggedWords = 1024;
+
+bool isDrawOpcode(const PCSX::GPU::Logged& logged) {
+    if (logged.words.empty()) return false;
+
+    switch ((logged.words.front() >> 24) & 0xffu) {
+        case 0x20:
+        case 0x28:
+        case 0x30:
+        case 0x38:
+        case 0x24:
+        case 0x2C:
+        case 0x34:
+        case 0x3C:
+            return true;
+        default:
+            return false;
+    }
+}
 }
 
 static const char* const c_vtx = R"(
@@ -310,12 +328,14 @@ void PCSX::GPULogger::addNodeInternal(GPU::Logged* node, GPU::Logged::Origin ori
     g_emulator->m_gpu->setOpenGLContext();
 }
 
-bool PCSX::GPULogger::saveFrameLog(const std::filesystem::path& path) {
+bool PCSX::GPULogger::saveFrameLog(const std::filesystem::path& path, bool filterDrawOpcodes) {
     std::ofstream output(path, std::ios::binary);
     if (!output.is_open()) return false;
 
     size_t entryCount = 0;
     for (const auto& logged : m_list) {
+        if (filterDrawOpcodes && !isDrawOpcode(logged)) continue;
+
         const auto entry = buildLogEntry(logged);
         output.write(reinterpret_cast<const char*>(&entry), sizeof(entry));
         if (!output.good()) return false;

@@ -56,6 +56,7 @@ class GPULogger {
         };
     } m_filter = {0, 0};
     bool m_filterEnabled = false;
+    bool m_filterDrawOpcodes = false;
     bool m_filterProbing = false;
     std::array<char, 256> m_exportPath{};
     std::string m_exportStatus;
