@@ -158,6 +158,9 @@ void PCSX::Widgets::GPULogger::draw(PCSX::GPULogger* logger, const char* title) 
     }
     ImGuiHelpers::ShowHelpMarker(_(
         "When enabled, hovering then clicking inside the VRAM viewer will set the pixel location for the filtering."));
+    ImGui::Checkbox(_("Filter draw opcodes"), &m_filterDrawOpcodes);
+    ImGuiHelpers::ShowHelpMarker(_(
+        "When enabled, limits the log to drawing commands (GP0 opcodes 0x20, 0x28, 0x30, 0x38, 0x24, 0x2C, 0x34, 0x3C)."));
 
     std::string label;
 
@@ -208,6 +211,23 @@ void PCSX::Widgets::GPULogger::draw(PCSX::GPULogger* logger, const char* title) 
         ImGui::PushID(n);
         if (m_filterEnabled && !logged.isInside(m_filter.x, m_filter.y)) {
             continue;
+        }
+        if (m_filterDrawOpcodes) {
+            const auto wordsEmpty = logged.words.empty();
+            const auto opcode = wordsEmpty ? 0u : (logged.words.front() >> 24) & 0xffu;
+            switch (opcode) {
+                case 0x20:
+                case 0x28:
+                case 0x30:
+                case 0x38:
+                case 0x24:
+                case 0x2C:
+                case 0x34:
+                case 0x3C:
+                    break;
+                default:
+                    continue;
+            }
         }
         if (m_showOrigins) {
             if ((logged.origin != GPU::Logged::Origin::REPLAY) &&
