@@ -4,6 +4,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -75,6 +76,7 @@ struct GTEState {
     GTELogMetadata metadata;
 };
 
+#pragma pack(push, 4)
 struct LogEntry {
     uint32_t frame = 0;
     uint32_t pc = 0;
@@ -105,5 +107,14 @@ struct LogEntry {
     uint8_t u[4] = {};
     uint8_t v[4] = {};
 };
+#pragma pack(pop)
+
+inline constexpr std::size_t LogEntrySizeBytes() {
+    // Padding is part of the on-disk format to preserve alignment requirements of the
+    // GPU logger, so the helper intentionally returns the padded structure size.
+    return sizeof(LogEntry);
+}
+
+static_assert(LogEntrySizeBytes() == 168, "LogEntry size changed; update metadata expectations");
 
 }  // namespace PCSX
