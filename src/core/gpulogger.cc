@@ -125,6 +125,13 @@ void PCSX::GPULogger::recordVertexFetch(const GTEFetchContext& fetch) {
 }
 
 namespace {
+struct FrameLogMetadataBlock {
+    uint64_t metadataSize = 0;
+    uint64_t logEntrySize = 0;
+    uint64_t entryCount = 0;
+    uint64_t metadataVersion = 1;
+};
+
 std::string colorToHex(uint32_t color) {
     std::ostringstream stream;
     stream << "0x" << std::hex << std::setw(6) << std::setfill('0') << (color & 0xffffff);
@@ -307,13 +314,37 @@ bool PCSX::GPULogger::saveFrameLog(const std::filesystem::path& path) {
     std::ofstream output(path, std::ios::binary);
     if (!output.is_open()) return false;
 
+    size_t entryCount = 0;
     for (const auto& logged : m_list) {
         const auto entry = buildLogEntry(logged);
         output.write(reinterpret_cast<const char*>(&entry), sizeof(entry));
         if (!output.good()) return false;
+        ++entryCount;
     }
 
-    return output.good();
+    FrameLogMetadataBlock metadata{};
+    metadata.metadataSize = sizeof(metadata);
+    metadata.logEntrySize = sizeof(LogEntry);
+    metadata.entryCount = entryCount;
+
+    output.write(reinterpret_cast<const char*>(&metadata), sizeof(metadata));
+    if (!output.good()) return false;
+
+    auto metadataTextPath = path;
+    metadataTextPath.replace_extension(".txt");
+
+    std::ofstream metadataText(metadataTextPath);
+    if (!metadataText.is_open()) return false;
+
+    metadataText << "GPU frame log metadata\n";
+    metadataText << "Entry count: " << metadata.entryCount << "\n";
+    metadataText << "LogEntry size (bytes): " << metadata.logEntrySize << "\n";
+    metadataText << "Metadata block size (bytes): " << metadata.metadataSize << "\n";
+    metadataText << "Metadata version: " << metadata.metadataVersion << "\n";
+    metadataText << "Notes: Raw structures are written with the host ABI, including any implicit padding;"
+                 << " consumers should validate sizes before interpreting fields.";
+
+    return output.good() && metadataText.good();
 }
 
 void PCSX::GPULogger::startNewFrame() {
